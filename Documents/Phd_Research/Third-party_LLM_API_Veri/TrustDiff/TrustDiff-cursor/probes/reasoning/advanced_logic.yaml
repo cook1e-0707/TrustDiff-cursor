@@ -1,0 +1,20 @@
+probe_id: "reasoning_advanced_logic"
+probe_type: "reasoning" 
+description: "Tests advanced logical reasoning, chain of thought, and multi-step problem solving"
+
+prompt:
+  - role: "system"
+    content: "You are a helpful assistant that excels at logical reasoning. Always show your step-by-step thinking process."
+  - role: "user"
+    content: |
+      Three friends - Alice, Bob, and Charlie - are sitting around a circular table. Each person has a different colored hat: red, blue, or green. Use the following clues to determine who is wearing which colored hat:
+      
+      1. Alice is not wearing the red hat
+      2. The person wearing the blue hat is sitting directly across from Bob
+      3. Charlie is sitting to the immediate right of the person wearing the green hat
+      4. Bob is not sitting next to Alice
+      
+      Solve this step by step, showing your reasoning clearly.
+
+max_tokens: 800
+temperature: 0.1 

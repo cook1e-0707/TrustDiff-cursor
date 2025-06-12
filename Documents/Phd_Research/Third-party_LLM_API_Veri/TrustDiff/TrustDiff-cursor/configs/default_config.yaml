@@ -1,0 +1,39 @@
+# TrustDiff Configuration File
+# API Keys - Best practice: Load from environment variables
+api_keys:
+  openai: ${OPENAI_API_KEY}
+  platform_a_key: ${PLATFORM_A_KEY}
+  judge_llm_key: ${OPENAI_API_KEY}  # Can reuse a key
+
+# Baseline platform definition (your ground truth)
+baseline:
+  name: "OpenAI_Official"
+  api_base: "https://api.openai.com/v1"
+  api_key_env: "openai"
+  model: "gpt-3.5-turbo"
+
+# Target platforms to test
+targets:
+  - name: "Platform_A"
+    api_base: "https://api.platform-a.com/v1"
+    api_key_env: "platform_a_key"
+    model: "gpt-3.5-turbo"
+  
+  - name: "Self_Hosted_NewAPI"
+    api_base: "http://localhost:3000/v1"
+    api_key_env: "openai"  # It might reuse the OpenAI key
+    model: "gpt-3.5-turbo"
+
+# Judge configuration for LLM-as-a-Judge quality evaluation
+judge:
+  name: "Judge_LLM"
+  api_base: "https://api.openai.com/v1"
+  api_key_env: "judge_llm_key"
+  model: "gpt-4"
+
+# Run configuration
+run_settings:
+  probe_dir: "./probes"
+  output_dir: "./outputs"
+  concurrency: 10           # Number of parallel requests
+  timeout_seconds: 30       # Request timeout 

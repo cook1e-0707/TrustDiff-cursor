@@ -1,0 +1,11 @@
+probe_id: "cost_lorem_ipsum_500"
+probe_type: "cost"
+description: "Tests cost efficiency with a 500-word lorem ipsum generation task"
+
+prompt:
+  - role: "user"
+    content: "Generate exactly 500 words of Lorem Ipsum text. Make sure it's exactly 500 words, no more, no less."
+
+# Cost testing parameters
+max_tokens: 600
+temperature: 0.5 
