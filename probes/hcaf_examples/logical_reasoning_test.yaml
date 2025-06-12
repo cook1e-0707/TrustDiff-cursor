@@ -1,0 +1,24 @@
+probe_id: "hcaf_logical_reasoning_causal_chain"
+probe_type: "reasoning"
+description: "H-CAF逻辑推理测试：因果链推理能力评估"
+
+# H-CAF认知向量标签
+cognitive_focus: ["logical_reasoning", "knowledge_application"]
+
+prompt:
+  - role: "user"
+    content: |
+      假设某个城市在过去5年中发生了以下变化：
+      1. 新建了3条地铁线路
+      2. 房价平均上涨了40%
+      3. 新增科技公司数量增长了300%
+      4. 交通拥堵问题显著减少
+      5. 年轻人口流入增加了60%
+
+      请分析这些现象之间的因果关系，并推理出最可能的发展逻辑链条。要求：
+      1. 明确指出哪个是起始因子
+      2. 解释每个环节的因果机制
+      3. 预测接下来可能发生的3个连锁效应
+
+max_tokens: 800
+temperature: 0.3 

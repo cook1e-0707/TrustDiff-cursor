@@ -46,4 +46,9 @@ run_settings:
   probe_dir: "./probes"
   output_dir: "./outputs"
   concurrency: 5            # Number of parallel requests - 降低并发数减少网络压力
-  timeout_seconds: 60       # Request timeout - 增加到60秒解决超时问题 
+  timeout_seconds: 60       # Request timeout - 增加到60秒解决超时问题
+  
+  # H-CAF (分层认知能力评估框架) 设置
+  use_hcaf_framework: true  # 启用H-CAF认知评估框架（推荐）
+  cognitive_vectors_focus: null  # 重点关注的认知向量，null表示使用全部5个向量
+  # 可选的认知向量: ["logical_reasoning", "knowledge_application", "creative_synthesis", "instructional_fidelity", "safety_metacognition"] 

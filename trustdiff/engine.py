@@ -38,7 +38,13 @@ class Engine:
         await self.storage.initialize()
         
         if self.config.judge:
-            self.comparator = Comparator(self.config.judge, self.config.api_keys, self.config.timeout_seconds)
+            use_hcaf = getattr(self.config, 'use_hcaf_framework', True)  # 默认使用H-CAF框架
+            self.comparator = Comparator(
+                self.config.judge, 
+                self.config.api_keys, 
+                self.config.timeout_seconds,
+                use_hcaf=use_hcaf
+            )
         
         return str(output_dir)
     

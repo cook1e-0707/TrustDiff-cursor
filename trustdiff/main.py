@@ -94,7 +94,9 @@ def init(
                 "probe_dir": "./probes",
                 "output_dir": "./outputs",
                 "concurrency": 10,
-                "timeout_seconds": 60
+                "timeout_seconds": 60,
+                "use_hcaf_framework": True,
+                "cognitive_vectors_focus": None
             }
         }
         
