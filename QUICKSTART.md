@@ -21,9 +21,19 @@
 ## Setup
 
 1. **Set up environment variables**:
+   
+   Windows (PowerShell):
+   ```powershell
+   $env:OPENAI_API_KEY="sk-your-openai-api-key-here"
+   $env:PLATFORM_A_KEY="your-platform-a-api-key-here"
+   $env:GEMINI_API_KEY="your-gemini-api-key-here"
+   ```
+   
+   Linux/macOS (Bash):
    ```bash
-   export OPENAI_API_KEY="your-openai-api-key"
-   export PLATFORM_A_KEY="your-platform-a-key"
+   export OPENAI_API_KEY="sk-your-openai-api-key-here"
+   export PLATFORM_A_KEY="your-platform-a-api-key-here"
+   export GEMINI_API_KEY="your-gemini-api-key-here"
    ```
 
 2. **Initialize a new project**:

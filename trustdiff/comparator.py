@@ -143,6 +143,10 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             return "[Original prompt extracted from context]"
         return "[Original prompt not available - consider storing request data for better analysis]"
     
+    def _is_gemini_api(self) -> bool:
+        """Check if the judge is using Gemini API."""
+        return "generativelanguage.googleapis.com" in self.judge_config.api_base
+
     async def _call_judge_llm(self, prompt: str) -> Optional[Dict[str, Any]]:
         """Make a request to the judge LLM."""
         try:
@@ -151,35 +155,108 @@ Your entire output must be a single, valid JSON object, with no explanatory text
                 console.print(f"[yellow]No API key available for judge LLM[/yellow]")
                 return None
             
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
-            
-            body = {
-                "model": self.judge_config.model or "gpt-4",
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "max_tokens": 1000,
-                "temperature": 0.1  # Low temperature for consistent evaluation
-            }
-            
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.judge_config.api_base}/chat/completions",
-                    headers=headers,
-                    json=body
-                )
-                
-                if response.status_code == 200:
-                    return response.json()
-                else:
-                    console.print(f"[yellow]Judge LLM request failed: {response.status_code}[/yellow]")
-                    return None
+            # Check if using Gemini API
+            if self._is_gemini_api():
+                return await self._call_gemini_api(prompt, api_key)
+            else:
+                return await self._call_openai_api(prompt, api_key)
                     
         except Exception as e:
             console.print(f"[yellow]Judge LLM call failed: {e}[/yellow]")
+            return None
+    
+    async def _call_openai_api(self, prompt: str, api_key: str) -> Optional[Dict[str, Any]]:
+        """Make a request to OpenAI-compatible API."""
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        body = {
+            "model": self.judge_config.model or "gpt-4",
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 1000,
+            "temperature": 0.1  # Low temperature for consistent evaluation
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.judge_config.api_base}/chat/completions",
+                headers=headers,
+                json=body
+            )
+            
+            if response.status_code == 200:
+                return response.json()
+            else:
+                console.print(f"[yellow]Judge LLM request failed: {response.status_code}[/yellow]")
+                return None
+    
+    async def _call_gemini_api(self, prompt: str, api_key: str) -> Optional[Dict[str, Any]]:
+        """Make a request to Gemini API."""
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        model_name = self.judge_config.model or "gemini-1.5-pro"
+        
+        # Gemini API format
+        body = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 1000,
+                "candidateCount": 1
+            }
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                f"{self.judge_config.api_base}/models/{model_name}:generateContent?key={api_key}",
+                headers=headers,
+                json=body
+            )
+            
+            if response.status_code == 200:
+                gemini_response = response.json()
+                # Convert Gemini response to OpenAI-like format
+                return self._convert_gemini_response(gemini_response)
+            else:
+                console.print(f"[yellow]Gemini API request failed: {response.status_code} - {response.text}[/yellow]")
+                return None
+    
+    def _convert_gemini_response(self, gemini_response: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert Gemini API response to OpenAI-like format."""
+        try:
+            if 'candidates' in gemini_response and gemini_response['candidates']:
+                candidate = gemini_response['candidates'][0]
+                if 'content' in candidate and 'parts' in candidate['content']:
+                    text = candidate['content']['parts'][0]['text']
+                    
+                    # Convert to OpenAI format
+                    return {
+                        'choices': [
+                            {
+                                'message': {
+                                    'content': text
+                                }
+                            }
+                        ]
+                    }
+            
+            console.print(f"[yellow]Unexpected Gemini response format: {gemini_response}[/yellow]")
+            return None
+            
+        except Exception as e:
+            console.print(f"[yellow]Failed to convert Gemini response: {e}[/yellow]")
             return None
     
     def _parse_judge_response(self, response_data: Dict[str, Any]) -> Optional[QualityEvaluation]:

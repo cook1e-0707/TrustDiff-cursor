@@ -1,35 +1,44 @@
 # TrustDiff Configuration File
 # API Keys - Best practice: Load from environment variables
 api_keys:
-  openai: ${OPENAI_API_KEY}
-  platform_a_key: ${PLATFORM_A_KEY}
-  judge_llm_key: ${OPENAI_API_KEY}  # Can reuse a key
+  openai: ${OPENAI_API_KEY}                    # OpenAI官方API key
+  platform_a_key: ${PLATFORM_A_KEY}           # 待测试平台A的API key
+  platform_b_key: ${PLATFORM_B_KEY}           # 待测试平台B的API key（可选）
+  gemini_key: ${GEMINI_API_KEY}                # Google Gemini API key（用于裁判）
 
-# Baseline platform definition (your ground truth)
+# Baseline platform definition (your ground truth/基准平台)
 baseline:
   name: "OpenAI_Official"
   api_base: "https://api.openai.com/v1"
   api_key_env: "openai"
-  model: "gpt-3.5-turbo"
+  model: "gpt-4o"                              # 建议使用更强的模型作为基准
 
-# Target platforms to test
+# Target platforms to test (待检测的平台列表)
 targets:
+  # 示例：第三方OpenAI API代理平台
   - name: "Platform_A"
-    api_base: "https://api.platform-a.com/v1"
+    api_base: "https://api.platform-a.com/v1"  # 替换为实际的API端点
     api_key_env: "platform_a_key"
-    model: "gpt-3.5-turbo"
+    model: "gpt-4o"
   
-  - name: "Self_Hosted_NewAPI"
-    api_base: "http://localhost:3000/v1"
-    api_key_env: "openai"  # It might reuse the OpenAI key
-    model: "gpt-3.5-turbo"
+  # 示例：自建的NewAPI/One-API等代理
+  - name: "Self_Hosted_Proxy"
+    api_base: "http://localhost:3000/v1"       # 本地代理地址
+    api_key_env: "openai"                      # 可以复用OpenAI key
+    model: "gpt-4o"
+  
+  # 示例：另一个第三方平台
+  # - name: "Platform_B"
+  #   api_base: "https://api.platform-b.com/v1"
+  #   api_key_env: "platform_b_key"
+  #   model: "gpt-4o"
 
-# Judge configuration for LLM-as-a-Judge quality evaluation
+# Judge configuration - 使用Gemini 2.5 Pro作为裁判
 judge:
-  name: "Judge_LLM"
-  api_base: "https://api.openai.com/v1"
-  api_key_env: "judge_llm_key"
-  model: "gpt-4"
+  name: "Gemini_Judge"
+  api_base: "https://generativelanguage.googleapis.com/v1beta"
+  api_key_env: "gemini_key"
+  model: "gemini-2.0-flash-exp"    # 或使用 "gemini-1.5-pro" 等其他模型
 
 # Run configuration
 run_settings:
