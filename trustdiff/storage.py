@@ -1,30 +1,42 @@
 """
-Data storage logic for TrustDiff using SQLite and JSON.
-Enhanced to support H-CAF (Hierarchical Cognitive Assessment Framework) data.
+Enhanced storage module for TrustDiff H-CAF framework.
+Supports both traditional evaluation results and H-CAF cognitive assessments.
 """
 
+import os
 import json
+import yaml
 import sqlite3
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Dict, Any, Optional
+from dataclasses import asdict
 
-from .models import RawResult, EvaluationResult, TestSummary
+from .models import (
+    TrustDiffReport, EvaluationResult, QualityEvaluation, 
+    RawResult, ExecutionPlan, CognitiveFingerprint, CapabilityGaps
+)
 
 
-class Storage:
-    """Storage manager for TrustDiff results using SQLite + JSON files."""
+class TrustDiffStorage:
+    """Enhanced storage manager supporting H-CAF cognitive assessment data"""
     
-    def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, output_dir: str = "output"):
+        self.output_dir = output_dir
+        self.ensure_output_directory()
         
         self.db_path = self.output_dir / "results.db"
         self.logs_dir = self.output_dir / "logs"
         self.logs_dir.mkdir(exist_ok=True)
         
         self._db_initialized = False
+    
+    def ensure_output_directory(self):
+        """Ensure output directory exists"""
+        os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(os.path.join(self.output_dir, "raw_responses"), exist_ok=True)
+        os.makedirs(os.path.join(self.output_dir, "hcaf_reports"), exist_ok=True)
     
     async def initialize(self):
         """Initialize the database schema."""
@@ -135,6 +147,425 @@ class Storage:
             conn.commit()
         finally:
             conn.close()
+    
+    def save_report(self, report: TrustDiffReport, filename_prefix: str = "trustdiff_report") -> str:
+        """Save complete TrustDiff report with H-CAF support"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = f"{filename_prefix}_{timestamp}"
+        
+        # Convert to serializable format
+        report_dict = self._prepare_report_for_serialization(report)
+        
+        # Save as JSON
+        json_file = os.path.join(self.output_dir, f"{base_filename}.json")
+        with open(json_file, 'w', encoding='utf-8') as f:
+            json.dump(report_dict, f, indent=2, ensure_ascii=False, default=str)
+        
+        # Save as YAML for better readability
+        yaml_file = os.path.join(self.output_dir, f"{base_filename}.yaml")
+        with open(yaml_file, 'w', encoding='utf-8') as f:
+            yaml.dump(report_dict, f, default_flow_style=False, allow_unicode=True)
+        
+        # Save H-CAF specific analysis
+        if self._has_hcaf_data(report):
+            hcaf_file = os.path.join(self.output_dir, "hcaf_reports", f"hcaf_{base_filename}.json")
+            hcaf_analysis = self._extract_hcaf_analysis(report)
+            with open(hcaf_file, 'w', encoding='utf-8') as f:
+                json.dump(hcaf_analysis, f, indent=2, ensure_ascii=False, default=str)
+        
+        return json_file
+    
+    def _prepare_report_for_serialization(self, report: TrustDiffReport) -> Dict[str, Any]:
+        """Convert TrustDiffReport to JSON-serializable format"""
+        return {
+            'metadata': {
+                'framework_version': 'H-CAF v1.0',
+                'execution_timestamp': report.execution_timestamp.isoformat(),
+                'total_runtime_seconds': report.total_runtime_seconds,
+                'target_platform': report.execution_plan.target_platform.name,
+                'baseline_platform': report.execution_plan.baseline_platform.name
+            },
+            'execution_plan': asdict(report.execution_plan),
+            'summary_statistics': {
+                'total_probes': len(report.evaluation_results),
+                'success_rate_target': report.success_rate_target,
+                'success_rate_baseline': report.success_rate_baseline,
+                'evaluation_success_rate': report.evaluation_success_rate,
+                'cognitive_performance': report.get_cognitive_performance_summary()
+            },
+            'evaluation_results': [self._serialize_evaluation_result(result) for result in report.evaluation_results],
+            'raw_results': {
+                'target': [asdict(result) for result in report.raw_results_target],
+                'baseline': [asdict(result) for result in report.raw_results_baseline]
+            },
+            'executive_summary': report.get_executive_summary()
+        }
+    
+    def _serialize_evaluation_result(self, result: EvaluationResult) -> Dict[str, Any]:
+        """Serialize single evaluation result with H-CAF support"""
+        result_dict = {
+            'probe_id': result.probe_id,
+            'target_platform': result.target_platform,
+            'baseline_platform': result.baseline_platform,
+            'evaluation_success': result.evaluation_success,
+            'performance_metrics': {
+                'latency_diff_ms': result.latency_diff_ms,
+                'cost_diff': result.cost_diff,
+                'tokens_diff': result.tokens_diff
+            }
+        }
+        
+        if result.quality_evaluation:
+            quality_dict = {
+                'verdict': result.quality_evaluation.verdict,
+                'confidence': result.quality_evaluation.confidence,
+                'reasoning': result.quality_evaluation.reasoning,
+                'evaluation_type': 'H-CAF' if result.quality_evaluation.is_hcaf_evaluation() else 'Legacy'
+            }
+            
+            # Add H-CAF specific data if available
+            if result.quality_evaluation.is_hcaf_evaluation():
+                quality_dict.update({
+                    'cognitive_focus': result.quality_evaluation.cognitive_focus,
+                    'cognitive_fingerprint_target': asdict(result.quality_evaluation.cognitive_fingerprint_target),
+                    'cognitive_fingerprint_baseline': asdict(result.quality_evaluation.cognitive_fingerprint_baseline),
+                    'capability_gaps': asdict(result.quality_evaluation.capability_gaps),
+                    'comparative_audit_summary': result.quality_evaluation.comparative_audit_summary,
+                    'degradation_severity': result.quality_evaluation.get_degradation_severity()
+                })
+            
+            # Add legacy data if available
+            elif result.quality_evaluation.detailed_scores_target:
+                quality_dict.update({
+                    'detailed_scores_target': asdict(result.quality_evaluation.detailed_scores_target),
+                    'detailed_scores_baseline': asdict(result.quality_evaluation.detailed_scores_baseline),
+                    'score_target': result.quality_evaluation.score_target,
+                    'score_baseline': result.quality_evaluation.score_baseline,
+                    'comparative_reasoning': result.quality_evaluation.comparative_reasoning
+                })
+            
+            result_dict['quality_evaluation'] = quality_dict
+        
+        if result.error_message:
+            result_dict['error_message'] = result.error_message
+        
+        return result_dict
+    
+    def _has_hcaf_data(self, report: TrustDiffReport) -> bool:
+        """Check if report contains H-CAF evaluation data"""
+        return any(
+            result.quality_evaluation and result.quality_evaluation.is_hcaf_evaluation()
+            for result in report.evaluation_results
+        )
+    
+    def _extract_hcaf_analysis(self, report: TrustDiffReport) -> Dict[str, Any]:
+        """Extract H-CAF specific analysis from report"""
+        hcaf_results = [
+            result for result in report.evaluation_results
+            if result.quality_evaluation and result.quality_evaluation.is_hcaf_evaluation()
+        ]
+        
+        if not hcaf_results:
+            return {"note": "No H-CAF evaluation data available"}
+        
+        # Detailed cognitive analysis
+        cognitive_dimensions = ['logical_reasoning', 'knowledge_application', 'creative_synthesis', 
+                              'instructional_fidelity', 'safety_metacognition']
+        
+        dimension_analysis = {}
+        for dimension in cognitive_dimensions:
+            target_scores = []
+            baseline_scores = []
+            gaps = []
+            
+            for result in hcaf_results:
+                if result.quality_evaluation.cognitive_fingerprint_target:
+                    target_scores.append(getattr(result.quality_evaluation.cognitive_fingerprint_target, dimension))
+                if result.quality_evaluation.cognitive_fingerprint_baseline:
+                    baseline_scores.append(getattr(result.quality_evaluation.cognitive_fingerprint_baseline, dimension))
+                if result.quality_evaluation.capability_gaps:
+                    gaps.append(getattr(result.quality_evaluation.capability_gaps, f"{dimension}_gap"))
+            
+            dimension_analysis[dimension] = {
+                'target_average': sum(target_scores) / len(target_scores) if target_scores else 0,
+                'baseline_average': sum(baseline_scores) / len(baseline_scores) if baseline_scores else 0,
+                'average_gap': sum(gaps) / len(gaps) if gaps else 0,
+                'sample_count': len(target_scores)
+            }
+        
+        # Probe-level analysis
+        probe_analysis = []
+        for result in hcaf_results:
+            probe_data = {
+                'probe_id': result.probe_id,
+                'verdict': result.quality_evaluation.verdict,
+                'degradation_severity': result.quality_evaluation.get_degradation_severity(),
+                'confidence': result.quality_evaluation.confidence
+            }
+            
+            if result.quality_evaluation.cognitive_fingerprint_target:
+                probe_data['target_cognitive_score'] = result.quality_evaluation.cognitive_fingerprint_target.get_average_score()
+            
+            if result.quality_evaluation.cognitive_fingerprint_baseline:
+                probe_data['baseline_cognitive_score'] = result.quality_evaluation.cognitive_fingerprint_baseline.get_average_score()
+            
+            if result.quality_evaluation.capability_gaps:
+                probe_data['overall_degradation'] = result.quality_evaluation.capability_gaps.get_average_degradation()
+                probe_data['major_weaknesses'] = result.quality_evaluation.capability_gaps.get_major_weaknesses()
+            
+            probe_analysis.append(probe_data)
+        
+        return {
+            'hcaf_framework_version': 'v1.0',
+            'analysis_timestamp': datetime.now().isoformat(),
+            'summary': {
+                'total_hcaf_evaluations': len(hcaf_results),
+                'overall_performance': report.get_cognitive_performance_summary()
+            },
+            'cognitive_dimension_analysis': dimension_analysis,
+            'probe_level_analysis': probe_analysis,
+            'recommendations': self._generate_hcaf_recommendations(dimension_analysis)
+        }
+    
+    def _generate_hcaf_recommendations(self, dimension_analysis: Dict[str, Any]) -> List[str]:
+        """Generate actionable recommendations based on H-CAF analysis"""
+        recommendations = []
+        
+        # Find the most problematic dimensions
+        sorted_dimensions = sorted(
+            dimension_analysis.items(),
+            key=lambda x: x[1]['average_gap'],
+            reverse=True
+        )
+        
+        for dimension, analysis in sorted_dimensions[:3]:  # Top 3 problematic areas
+            gap = analysis['average_gap']
+            if gap > 1.0:
+                recommendations.append(
+                    f"Critical improvement needed in {dimension.replace('_', ' ')}: "
+                    f"average degradation of {gap:.2f} points"
+                )
+            elif gap > 0.5:
+                recommendations.append(
+                    f"Monitor {dimension.replace('_', ' ')}: "
+                    f"moderate degradation of {gap:.2f} points"
+                )
+        
+        # Overall performance recommendations
+        overall_gap = sum(d['average_gap'] for d in dimension_analysis.values()) / len(dimension_analysis)
+        if overall_gap > 1.5:
+            recommendations.append("Consider comprehensive model retraining or architecture revision")
+        elif overall_gap > 0.8:
+            recommendations.append("Implement targeted fine-tuning for identified weak areas")
+        elif overall_gap < -0.5:
+            recommendations.append("Performance improvement detected - consider broader deployment")
+        
+        return recommendations if recommendations else ["No significant issues detected"]
+    
+    def save_raw_responses(self, raw_results: List[RawResult]) -> List[str]:
+        """Save raw API responses for detailed analysis"""
+        saved_files = []
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        for result in raw_results:
+            if result.response_data:
+                filename = f"raw_{result.platform_name}_{result.probe_id}_{timestamp}.json"
+                filepath = os.path.join(self.output_dir, "raw_responses", filename)
+                
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'probe_id': result.probe_id,
+                        'platform_name': result.platform_name,
+                        'success': result.success,
+                        'timestamp': result.timestamp.isoformat() if result.timestamp else None,
+                        'latency_ms': result.latency_ms,
+                        'tokens_used': result.tokens_used,
+                        'cost_estimate': result.cost_estimate,
+                        'response_data': result.response_data,
+                        'error_message': result.error_message
+                    }, f, indent=2, ensure_ascii=False, default=str)
+                
+                saved_files.append(filepath)
+        
+        return saved_files
+    
+    def create_database(self, db_path: str = None) -> str:
+        """Create SQLite database with H-CAF support for advanced analysis"""
+        if db_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            db_path = os.path.join(self.output_dir, f"trustdiff_hcaf_{timestamp}.db")
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Main evaluation results table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS evaluation_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                probe_id TEXT NOT NULL,
+                target_platform TEXT NOT NULL,
+                baseline_platform TEXT NOT NULL,
+                evaluation_success BOOLEAN NOT NULL,
+                latency_diff_ms REAL,
+                cost_diff REAL,
+                tokens_diff INTEGER,
+                verdict TEXT,
+                confidence REAL,
+                reasoning TEXT,
+                evaluation_type TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # H-CAF cognitive fingerprints table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS cognitive_fingerprints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluation_id INTEGER NOT NULL,
+                platform_type TEXT NOT NULL, -- 'target' or 'baseline'
+                logical_reasoning REAL NOT NULL,
+                knowledge_application REAL NOT NULL,
+                creative_synthesis REAL NOT NULL,
+                instructional_fidelity REAL NOT NULL,
+                safety_metacognition REAL NOT NULL,
+                total_score REAL NOT NULL,
+                average_score REAL NOT NULL,
+                FOREIGN KEY (evaluation_id) REFERENCES evaluation_results (id)
+            )
+        ''')
+        
+        # H-CAF capability gaps table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS capability_gaps (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                evaluation_id INTEGER NOT NULL,
+                logical_reasoning_gap REAL NOT NULL,
+                knowledge_application_gap REAL NOT NULL,
+                creative_synthesis_gap REAL NOT NULL,
+                instructional_fidelity_gap REAL NOT NULL,
+                safety_metacognition_gap REAL NOT NULL,
+                total_degradation REAL NOT NULL,
+                average_degradation REAL NOT NULL,
+                degradation_severity TEXT,
+                FOREIGN KEY (evaluation_id) REFERENCES evaluation_results (id)
+            )
+        ''')
+        
+        # Raw results table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS raw_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                probe_id TEXT NOT NULL,
+                platform_name TEXT NOT NULL,
+                success BOOLEAN NOT NULL,
+                latency_ms REAL,
+                tokens_used INTEGER,
+                cost_estimate REAL,
+                error_message TEXT,
+                response_data_json TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        
+        return db_path
+    
+    def save_to_database(self, report: TrustDiffReport, db_path: str = None) -> str:
+        """Save TrustDiffReport to SQLite database with full H-CAF support"""
+        if db_path is None:
+            db_path = self.create_database()
+        
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Save raw results
+        for result in report.raw_results_target + report.raw_results_baseline:
+            cursor.execute('''
+                INSERT INTO raw_results 
+                (probe_id, platform_name, success, latency_ms, tokens_used, cost_estimate, error_message, response_data_json, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                result.probe_id,
+                result.platform_name,
+                result.success,
+                result.latency_ms,
+                result.tokens_used,
+                result.cost_estimate,
+                result.error_message,
+                json.dumps(result.response_data) if result.response_data else None,
+                result.timestamp
+            ))
+        
+        # Save evaluation results
+        for eval_result in report.evaluation_results:
+            # Insert main evaluation record
+            cursor.execute('''
+                INSERT INTO evaluation_results 
+                (probe_id, target_platform, baseline_platform, evaluation_success, latency_diff_ms, cost_diff, tokens_diff, verdict, confidence, reasoning, evaluation_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                eval_result.probe_id,
+                eval_result.target_platform,
+                eval_result.baseline_platform,
+                eval_result.evaluation_success,
+                eval_result.latency_diff_ms,
+                eval_result.cost_diff,
+                eval_result.tokens_diff,
+                eval_result.quality_evaluation.verdict if eval_result.quality_evaluation else None,
+                eval_result.quality_evaluation.confidence if eval_result.quality_evaluation else None,
+                eval_result.quality_evaluation.reasoning if eval_result.quality_evaluation else None,
+                'H-CAF' if eval_result.quality_evaluation and eval_result.quality_evaluation.is_hcaf_evaluation() else 'Legacy'
+            ))
+            
+            evaluation_id = cursor.lastrowid
+            
+            # Save H-CAF data if available
+            if eval_result.quality_evaluation and eval_result.quality_evaluation.is_hcaf_evaluation():
+                # Save cognitive fingerprints
+                if eval_result.quality_evaluation.cognitive_fingerprint_target:
+                    fp = eval_result.quality_evaluation.cognitive_fingerprint_target
+                    cursor.execute('''
+                        INSERT INTO cognitive_fingerprints 
+                        (evaluation_id, platform_type, logical_reasoning, knowledge_application, creative_synthesis, instructional_fidelity, safety_metacognition, total_score, average_score)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        evaluation_id, 'target', fp.logical_reasoning, fp.knowledge_application,
+                        fp.creative_synthesis, fp.instructional_fidelity, fp.safety_metacognition,
+                        fp.get_total_score(), fp.get_average_score()
+                    ))
+                
+                if eval_result.quality_evaluation.cognitive_fingerprint_baseline:
+                    fp = eval_result.quality_evaluation.cognitive_fingerprint_baseline
+                    cursor.execute('''
+                        INSERT INTO cognitive_fingerprints 
+                        (evaluation_id, platform_type, logical_reasoning, knowledge_application, creative_synthesis, instructional_fidelity, safety_metacognition, total_score, average_score)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        evaluation_id, 'baseline', fp.logical_reasoning, fp.knowledge_application,
+                        fp.creative_synthesis, fp.instructional_fidelity, fp.safety_metacognition,
+                        fp.get_total_score(), fp.get_average_score()
+                    ))
+                
+                # Save capability gaps
+                if eval_result.quality_evaluation.capability_gaps:
+                    gaps = eval_result.quality_evaluation.capability_gaps
+                    cursor.execute('''
+                        INSERT INTO capability_gaps 
+                        (evaluation_id, logical_reasoning_gap, knowledge_application_gap, creative_synthesis_gap, instructional_fidelity_gap, safety_metacognition_gap, total_degradation, average_degradation, degradation_severity)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        evaluation_id, gaps.logical_reasoning_gap, gaps.knowledge_application_gap,
+                        gaps.creative_synthesis_gap, gaps.instructional_fidelity_gap, gaps.safety_metacognition_gap,
+                        gaps.get_total_degradation(), gaps.get_average_degradation(),
+                        eval_result.quality_evaluation.get_degradation_severity()
+                    ))
+        
+        conn.commit()
+        conn.close()
+        
+        return db_path
     
     async def save_raw_result(self, result: RawResult):
         """Save a raw API result."""

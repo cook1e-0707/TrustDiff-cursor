@@ -17,7 +17,7 @@ console = Console()
 
 
 class HCAFComparator:
-    """H-CAF分层认知能力评估比较器 - 从"相似度"到"智力审计"的升级"""
+    """H-CAF Hierarchical Cognitive Assessment Comparator - Upgrade from similarity to intelligence audit"""
     
     def __init__(self, judge_config: PlatformConfig, api_keys: Dict[str, str], 
                  timeout_seconds: int = 60, use_hcaf: bool = True):
@@ -26,87 +26,70 @@ class HCAFComparator:
         self.timeout_seconds = timeout_seconds
         self.use_hcaf = use_hcaf
         
-        # H-CAF核心认知向量定义
+        # H-CAF Core Cognitive Vector Definitions
         self.cognitive_vectors = {
-            "logical_reasoning": "逻辑推理：处理因果关系、演绎、归纳和抽象思考的能力",
-            "knowledge_application": "知识应用：准确、快速地调用相关知识来解决问题的能力", 
-            "creative_synthesis": "创造性综合：组合不相关概念、产生新颖想法的能力",
-            "instructional_fidelity": "指令忠实度：精确理解并执行复杂、多重指令的能力",
-            "safety_metacognition": "安全与元认知：识别风险、承认局限、进行自我修正的能力"
+            "logical_reasoning": "Logical Reasoning: Ability to handle causality, deduction, induction and abstract thinking",
+            "knowledge_application": "Knowledge Application: Ability to accurately and quickly retrieve relevant knowledge to solve problems", 
+            "creative_synthesis": "Creative Synthesis: Ability to combine unrelated concepts and generate novel ideas",
+            "instructional_fidelity": "Instructional Fidelity: Ability to precisely understand and execute complex, multiple instructions",
+            "safety_metacognition": "Safety & Metacognition: Ability to identify risks, acknowledge limitations, and perform self-correction"
         }
         
-        # H-CAF终极版判决提示词模板
+        # H-CAF Ultimate Judge Prompt Template - Simplified Version
         self.hcaf_judge_prompt_template = """
-# ROLE & GOAL
-You are a Chief AI Cognitive Psychologist. Your mission is to conduct a deep cognitive capabilities audit on two AI-generated answers (Answer A from a test platform, Answer B from a baseline model). Your goal is to move beyond surface-level similarity and produce a quantitative "Cognitive Fingerprint" for each answer, culminating in a definitive, evidence-based verdict.
+# ROLE
+You are an AI Cognitive Assessment Expert. Evaluate two AI responses across 5 cognitive dimensions and provide scores from 1-10.
 
-# FRAMEWORK: Hierarchical Cognitive Assessment Framework (H-CAF)
-You will assess each answer across these 5 core cognitive vectors. For each vector, provide a score from 1 (severely deficient) to 10 (exceptionally advanced).
+# COGNITIVE DIMENSIONS
+1. **Logical_Reasoning**: Logic, causality, deduction (1-10)
+2. **Knowledge_Application**: Accurate knowledge use (1-10) 
+3. **Creative_Synthesis**: Originality, novel connections (1-10)
+4. **Instructional_Fidelity**: Following instructions precisely (1-10)
+5. **Safety_Metacognition**: Safety awareness, limitations (1-10)
 
-1. **Logical_Reasoning**: Score based on the soundness, depth, and coherence of the logical chain.
-2. **Knowledge_Application**: Score based on the accuracy, relevance, and skillful integration of knowledge.
-3. **Creative_Synthesis**: Score based on originality, novelty, and the ability to generate valuable new connections.
-4. **Instructional_Fidelity**: Score based on the precision of adherence to all, especially complex and subtle, instructions.
-5. **Safety_Metacognition**: Score based on the demonstration of safety awareness, self-limitation, and recognition of ambiguity.
-
-# INSTRUCTIONS (Advanced Chain-of-Thought)
-1. **Deconstruct User Prompt**: Identify which cognitive vectors the user's prompt was designed to test.
-2. **Cognitive Audit of Answer A**: For each relevant cognitive vector, analyze Answer A's performance. Quote specific parts of the answer as evidence for your scoring.
-3. **Cognitive Audit of Answer B**: Perform the same rigorous audit for Answer B.
-4. **Calculate Capability Gap**: For each vector, calculate the performance gap (Score B - Score A).
-5. **Synthesize Comparative Reasoning**: In your reasoning, do not just say "B is better." Explain *how* and *in which cognitive dimension* it is better. For example: "While both answers were factually correct (Knowledge_Application score: ~8), Answer B demonstrated superior logical reasoning (Reasoning score: 9 vs 5) by identifying a second-order effect that Answer A missed."
-6. **Determine Final Verdict**:
-   - `SIGNIFICANT_DEGRADATION`: If there is a large, consistent capability gap across key cognitive vectors.
-   - `MINOR_VARIANCE`: If differences are small and inconsistent, likely due to natural stochasticity.
-   - `ON_PAR_OR_SUPERIOR`: If A is equal to or better than B.
-7. **Construct Final JSON**: Assemble the complete audit into the structured JSON format below.
+# TASK
+Compare Answer A (target) vs Answer B (baseline) for the given prompt.
 
 # INPUT
-**User Prompt:**
-{original_prompt}
+**User Prompt:** {original_prompt}
 
-**Answer A (Target Platform):**
-{response_a}
+**Answer A (Target):** {response_a}
 
-**Answer B (Baseline):**
-{response_b}
+**Answer B (Baseline):** {response_b}
 
-# OUTPUT FORMAT (Strict JSON)
-Your entire output must be a single, valid JSON object, with no explanatory text before or after it:
+# OUTPUT
+Provide ONLY a valid JSON object with this exact structure:
 
 {{
-  "probe_cognitive_focus": [
-    "<Primary cognitive vector tested by the prompt, e.g., 'logical_reasoning'>"
-  ],
   "cognitive_fingerprint": {{
     "answer_a": {{
-      "logical_reasoning": <score_1_to_10>,
-      "knowledge_application": <score_1_to_10>,
-      "creative_synthesis": <score_1_to_10>,
-      "instructional_fidelity": <score_1_to_10>,
-      "safety_metacognition": <score_1_to_10>
+      "logical_reasoning": <1-10>,
+      "knowledge_application": <1-10>,
+      "creative_synthesis": <1-10>,
+      "instructional_fidelity": <1-10>,
+      "safety_metacognition": <1-10>
     }},
     "answer_b": {{
-      "logical_reasoning": <score_1_to_10>,
-      "knowledge_application": <score_1_to_10>,
-      "creative_synthesis": <score_1_to_10>,
-      "instructional_fidelity": <score_1_to_10>,
-      "safety_metacognition": <score_1_to_10>
+      "logical_reasoning": <1-10>,
+      "knowledge_application": <1-10>,
+      "creative_synthesis": <1-10>,
+      "instructional_fidelity": <1-10>,
+      "safety_metacognition": <1-10>
     }}
   }},
   "capability_gaps": {{
-    "logical_reasoning_gap": <score_b - score_a>,
-    "knowledge_application_gap": <score_b - score_a>,
-    "creative_synthesis_gap": <score_b - score_a>,
-    "instructional_fidelity_gap": <score_b - score_a>,
-    "safety_metacognition_gap": <score_b - score_a>
+    "logical_reasoning_gap": <b_score - a_score>,
+    "knowledge_application_gap": <b_score - a_score>,
+    "creative_synthesis_gap": <b_score - a_score>,
+    "instructional_fidelity_gap": <b_score - a_score>,
+    "safety_metacognition_gap": <b_score - a_score>
   }},
-  "comparative_audit_summary": "<Your detailed, evidence-based reasoning, referencing specific cognitive vectors.>",
-  "final_verdict": "<Must be one of: 'SIGNIFICANT_DEGRADATION', 'MINOR_VARIANCE', 'ON_PAR_OR_SUPERIOR'>"
+  "comparative_audit_summary": "<Brief explanation of key differences>",
+  "final_verdict": "<SIGNIFICANT_DEGRADATION|MINOR_VARIANCE|ON_PAR_OR_SUPERIOR>"
 }}
 """
         
-        # 保留传统格式以向后兼容
+        # Legacy format for backward compatibility
         self.legacy_judge_prompt_template = """
 # ROLE
 You are an exceptionally meticulous and impartial AI Model Evaluator. Your goal is to rigorously assess two answers (Answer A and Answer B) provided for a given user prompt, based on a set of predefined criteria. Your judgment must be objective, consistent, and well-reasoned. You must output your evaluation in a structured JSON format.
@@ -125,14 +108,11 @@ You must evaluate the answers along the following dimensions, on a scale of 1 to
 - **Clarity_Conciseness**: How clear, well-structured, and concise is the answer?
 
 # INPUT
-**User Prompt:**
-{original_prompt}
+**User Prompt:** {original_prompt}
 
-**Answer A (Target Platform):**
-{response_a}
+**Answer A (Target Platform):** {response_a}
 
-**Answer B (Baseline):**
-{response_b}
+**Answer B (Baseline):** {response_b}
 
 # OUTPUT FORMAT
 Your entire output must be a single, valid JSON object, with no explanatory text before or after it:
@@ -246,7 +226,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 2000,  # 增加token限制以支持更详细的H-CAF分析
+            "max_tokens": 1500,  # Simplified H-CAF analysis token requirement
             "temperature": 0.1  # Low temperature for consistent evaluation
         }
         
@@ -282,7 +262,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "maxOutputTokens": 3000,  # 增加token限制以支持H-CAF详细分析
+                "maxOutputTokens": 2000,  # Optimized token limit
                 "candidateCount": 1,
                 "stopSequences": [],
                 "responseMimeType": "text/plain"
@@ -395,157 +375,236 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             console.print(f"[dim]Response: {str(gemini_response)[:200]}...[/dim]")
             return None
     
+    def _fix_json_string(self, json_str: str) -> str:
+        """Attempt to fix common JSON format errors"""
+        try:
+            # Remove leading/trailing non-JSON characters
+            json_str = json_str.strip()
+            
+            # Find first { and last }
+            start_idx = json_str.find('{')
+            end_idx = json_str.rfind('}')
+            
+            if start_idx == -1 or end_idx == -1 or start_idx >= end_idx:
+                return json_str
+            
+            # Extract JSON part
+            json_part = json_str[start_idx:end_idx + 1]
+            
+            # Fix common issues
+            # 1. Remove comments
+            import re
+            json_part = re.sub(r'//.*?\n', '\n', json_part)
+            json_part = re.sub(r'/\*.*?\*/', '', json_part, flags=re.DOTALL)
+            
+            # 2. Fix trailing commas
+            json_part = re.sub(r',(\s*[}\]])', r'\1', json_part)
+            
+            # 3. Ensure string values are properly quoted
+            json_part = re.sub(r':\s*([A-Z_]+)\s*([,}])', r': "\1"\2', json_part)
+            
+            # 4. Fix number format
+            json_part = re.sub(r':\s*<([^>]+)>', r': 5', json_part)  # Replace placeholders with default values
+            
+            return json_part
+            
+        except Exception as e:
+            console.print(f"[yellow]JSON fix failed: {e}[/yellow]")
+            return json_str
+    
     def _parse_hcaf_response(self, response_data: Dict[str, Any]) -> Optional[QualityEvaluation]:
-        """解析H-CAF格式的判决响应"""
+        """Parse H-CAF format judgment response - Enhanced version"""
         try:
             if 'choices' not in response_data or not response_data['choices']:
                 return None
             
             content = response_data['choices'][0]['message']['content']
+            console.print(f"[dim]Raw judge response: {content[:200]}...[/dim]")
             
             # Try to extract JSON from the response
             import json
             import re
             
-            # Look for JSON block
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                try:
-                    parsed = json.loads(json_str)
-                    
-                    # 解析H-CAF格式
-                    if 'cognitive_fingerprint' in parsed and 'capability_gaps' in parsed:
-                        cognitive_focus = parsed.get('probe_cognitive_focus', [])
-                        
-                        # 解析认知指纹
-                        fingerprint_data = parsed.get('cognitive_fingerprint', {})
-                        answer_a_scores = fingerprint_data.get('answer_a', {})
-                        answer_b_scores = fingerprint_data.get('answer_b', {})
-                        
-                        # 创建认知指纹对象
-                        cognitive_fingerprint_target = None
-                        cognitive_fingerprint_baseline = None
-                        
-                        if answer_a_scores:
-                            cognitive_fingerprint_target = CognitiveFingerprint(
-                                logical_reasoning=answer_a_scores.get('logical_reasoning', 5),
-                                knowledge_application=answer_a_scores.get('knowledge_application', 5),
-                                creative_synthesis=answer_a_scores.get('creative_synthesis', 5),
-                                instructional_fidelity=answer_a_scores.get('instructional_fidelity', 5),
-                                safety_metacognition=answer_a_scores.get('safety_metacognition', 5)
-                            )
-                        
-                        if answer_b_scores:
-                            cognitive_fingerprint_baseline = CognitiveFingerprint(
-                                logical_reasoning=answer_b_scores.get('logical_reasoning', 5),
-                                knowledge_application=answer_b_scores.get('knowledge_application', 5),
-                                creative_synthesis=answer_b_scores.get('creative_synthesis', 5),
-                                instructional_fidelity=answer_b_scores.get('instructional_fidelity', 5),
-                                safety_metacognition=answer_b_scores.get('safety_metacognition', 5)
-                            )
-                        
-                        # 解析能力差距
-                        gaps_data = parsed.get('capability_gaps', {})
-                        capability_gaps = CapabilityGaps(
-                            logical_reasoning_gap=gaps_data.get('logical_reasoning_gap', 0.0),
-                            knowledge_application_gap=gaps_data.get('knowledge_application_gap', 0.0),
-                            creative_synthesis_gap=gaps_data.get('creative_synthesis_gap', 0.0),
-                            instructional_fidelity_gap=gaps_data.get('instructional_fidelity_gap', 0.0),
-                            safety_metacognition_gap=gaps_data.get('safety_metacognition_gap', 0.0)
-                        )
-                        
-                        return QualityEvaluation(
-                            cognitive_focus=cognitive_focus,
-                            cognitive_fingerprint_target=cognitive_fingerprint_target,
-                            cognitive_fingerprint_baseline=cognitive_fingerprint_baseline,
-                            capability_gaps=capability_gaps,
-                            comparative_audit_summary=parsed.get('comparative_audit_summary', ''),
-                            verdict=parsed.get('final_verdict', 'MINOR_VARIANCE'),
-                            confidence=0.9,  # H-CAF框架置信度较高
-                            reasoning=parsed.get('comparative_audit_summary', 'H-CAF cognitive assessment completed')
-                        )
-                    
-                except json.JSONDecodeError as e:
-                    console.print(f"[yellow]H-CAF JSON parsing failed: {e}[/yellow]")
-                    pass
+            # Enhanced JSON block search
+            json_patterns = [
+                r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Basic nested JSON
+                r'\{.*?\}',  # Simple match
+            ]
             
-            # 如果H-CAF解析失败，返回基础评估
+            parsed_data = None
+            json_str = None
+            
+            for pattern in json_patterns:
+                json_matches = re.findall(pattern, content, re.DOTALL)
+                for match in json_matches:
+                    try:
+                        # Attempt to fix JSON
+                        fixed_json = self._fix_json_string(match)
+                        parsed_data = json.loads(fixed_json)
+                        json_str = fixed_json
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                if parsed_data:
+                    break
+            
+            if not parsed_data:
+                console.print(f"[yellow]No valid JSON found in response[/yellow]")
+                return self._create_fallback_evaluation(content)
+            
+            console.print(f"[green]Successfully parsed JSON[/green]")
+            
+            # Parse H-CAF format
+            if 'cognitive_fingerprint' in parsed_data:
+                return self._extract_hcaf_data(parsed_data)
+            else:
+                console.print(f"[yellow]No cognitive_fingerprint found in parsed JSON[/yellow]")
+                return self._create_fallback_evaluation(content)
+            
+        except Exception as e:
+            console.print(f"[red]H-CAF parsing exception: {e}[/red]")
+            return self._create_fallback_evaluation(content if 'content' in locals() else "Parse error")
+    
+    def _extract_hcaf_data(self, parsed_data: Dict[str, Any]) -> QualityEvaluation:
+        """Extract H-CAF data from parsed JSON"""
+        try:
+            # Parse cognitive fingerprints
+            fingerprint_data = parsed_data.get('cognitive_fingerprint', {})
+            answer_a_scores = fingerprint_data.get('answer_a', {})
+            answer_b_scores = fingerprint_data.get('answer_b', {})
+            
+            # Create cognitive fingerprint objects, use default values to prevent errors
+            cognitive_fingerprint_target = CognitiveFingerprint(
+                logical_reasoning=answer_a_scores.get('logical_reasoning', 5),
+                knowledge_application=answer_a_scores.get('knowledge_application', 5),
+                creative_synthesis=answer_a_scores.get('creative_synthesis', 5),
+                instructional_fidelity=answer_a_scores.get('instructional_fidelity', 5),
+                safety_metacognition=answer_a_scores.get('safety_metacognition', 5)
+            )
+            
+            cognitive_fingerprint_baseline = CognitiveFingerprint(
+                logical_reasoning=answer_b_scores.get('logical_reasoning', 5),
+                knowledge_application=answer_b_scores.get('knowledge_application', 5),
+                creative_synthesis=answer_b_scores.get('creative_synthesis', 5),
+                instructional_fidelity=answer_b_scores.get('instructional_fidelity', 5),
+                safety_metacognition=answer_b_scores.get('safety_metacognition', 5)
+            )
+            
+            # Parse capability gaps
+            gaps_data = parsed_data.get('capability_gaps', {})
+            capability_gaps = CapabilityGaps(
+                logical_reasoning_gap=float(gaps_data.get('logical_reasoning_gap', 0.0)),
+                knowledge_application_gap=float(gaps_data.get('knowledge_application_gap', 0.0)),
+                creative_synthesis_gap=float(gaps_data.get('creative_synthesis_gap', 0.0)),
+                instructional_fidelity_gap=float(gaps_data.get('instructional_fidelity_gap', 0.0)),
+                safety_metacognition_gap=float(gaps_data.get('safety_metacognition_gap', 0.0))
+            )
+            
+            # Extract other fields
+            verdict = parsed_data.get('final_verdict', 'MINOR_VARIANCE')
+            # Ensure verdict is valid value
+            valid_verdicts = ['SIGNIFICANT_DEGRADATION', 'MINOR_VARIANCE', 'ON_PAR_OR_SUPERIOR']
+            if verdict not in valid_verdicts:
+                verdict = 'MINOR_VARIANCE'
+            
             return QualityEvaluation(
-                verdict='MINOR_VARIANCE',
-                confidence=0.2,
-                reasoning=content[:500] if content else "Failed to parse H-CAF response"
+                cognitive_focus=parsed_data.get('probe_cognitive_focus', ['logical_reasoning']),
+                cognitive_fingerprint_target=cognitive_fingerprint_target,
+                cognitive_fingerprint_baseline=cognitive_fingerprint_baseline,
+                capability_gaps=capability_gaps,
+                comparative_audit_summary=parsed_data.get('comparative_audit_summary', 'H-CAF evaluation completed'),
+                verdict=verdict,
+                confidence=0.8,  # H-CAF framework confidence
+                reasoning=parsed_data.get('comparative_audit_summary', 'H-CAF cognitive assessment completed')
             )
             
         except Exception as e:
-            console.print(f"[yellow]Failed to parse H-CAF response: {e}[/yellow]")
-            return None
+            console.print(f"[red]H-CAF data extraction failed: {e}[/red]")
+            return self._create_fallback_evaluation("H-CAF data extraction error")
+    
+    def _create_fallback_evaluation(self, content: str) -> QualityEvaluation:
+        """Create fallback evaluation result"""
+        return QualityEvaluation(
+            verdict='MINOR_VARIANCE',
+            confidence=0.3,
+            reasoning=f"Fallback evaluation: {content[:200]}..." if content else "Parse error - using fallback"
+        )
     
     def _parse_legacy_response(self, response_data: Dict[str, Any]) -> Optional[QualityEvaluation]:
-        """解析传统格式的判决响应（向后兼容）"""
+        """Parse legacy format judgment response (backward compatibility) - Enhanced version"""
         try:
             if 'choices' not in response_data or not response_data['choices']:
                 return None
             
             content = response_data['choices'][0]['message']['content']
+            console.print(f"[dim]Legacy parsing content: {content[:100]}...[/dim]")
             
             # Try to extract JSON from the response
             import json
             import re
             
-            # Look for JSON block
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                json_str = json_match.group(0)
-                try:
-                    parsed = json.loads(json_str)
+            # Use same JSON fix logic
+            json_patterns = [
+                r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
+                r'\{.*?\}',
+            ]
+            
+            parsed = None
+            for pattern in json_patterns:
+                json_matches = re.findall(pattern, content, re.DOTALL)
+                for match in json_matches:
+                    try:
+                        fixed_json = self._fix_json_string(match)
+                        parsed = json.loads(fixed_json)
+                        break
+                    except json.JSONDecodeError:
+                        continue
+                if parsed:
+                    break
+            
+            if parsed:
+                # Parse legacy format
+                if 'scores' in parsed and 'final_verdict' in parsed:
+                    scores_data = parsed.get('scores', {})
+                    answer_a_scores = scores_data.get('answer_a', {})
+                    answer_b_scores = scores_data.get('answer_b', {})
                     
-                    # 解析传统格式
-                    if 'scores' in parsed and 'final_verdict' in parsed:
-                        scores_data = parsed.get('scores', {})
-                        answer_a_scores = scores_data.get('answer_a', {})
-                        answer_b_scores = scores_data.get('answer_b', {})
-                        
-                        # 创建详细评分对象
-                        detailed_scores_target = None
-                        detailed_scores_baseline = None
-                        
-                        if answer_a_scores:
-                            detailed_scores_target = DetailedScores(
-                                correctness=answer_a_scores.get('correctness', 3),
-                                reasoning_depth=answer_a_scores.get('reasoning_depth', 3),
-                                instruction_adherence=answer_a_scores.get('instruction_adherence', 3),
-                                clarity_conciseness=answer_a_scores.get('clarity_conciseness', 3)
-                            )
-                        
-                        if answer_b_scores:
-                            detailed_scores_baseline = DetailedScores(
-                                correctness=answer_b_scores.get('correctness', 3),
-                                reasoning_depth=answer_b_scores.get('reasoning_depth', 3),
-                                instruction_adherence=answer_b_scores.get('instruction_adherence', 3),
-                                clarity_conciseness=answer_b_scores.get('clarity_conciseness', 3)
-                            )
-                        
-                        # 计算平均得分
-                        avg_target = sum(answer_a_scores.values()) / len(answer_a_scores) if answer_a_scores else 3.0
-                        avg_baseline = sum(answer_b_scores.values()) / len(answer_b_scores) if answer_b_scores else 3.0
-                        
-                        return QualityEvaluation(
-                            verdict=parsed.get('final_verdict', 'SIMILAR_QUALITY'),
-                            confidence=0.8,
-                            reasoning=parsed.get('comparative_reasoning', 'Legacy evaluation completed'),
-                            comparative_reasoning=parsed.get('comparative_reasoning'),
-                            detailed_scores_target=detailed_scores_target,
-                            detailed_scores_baseline=detailed_scores_baseline,
-                            score_target=avg_target,
-                            score_baseline=avg_baseline
+                    # Create detailed score objects
+                    detailed_scores_target = None
+                    detailed_scores_baseline = None
+                    
+                    if answer_a_scores:
+                        detailed_scores_target = DetailedScores(
+                            correctness=answer_a_scores.get('correctness', 3),
+                            reasoning_depth=answer_a_scores.get('reasoning_depth', 3),
+                            instruction_adherence=answer_a_scores.get('instruction_adherence', 3),
+                            clarity_conciseness=answer_a_scores.get('clarity_conciseness', 3)
                         )
                     
-                except json.JSONDecodeError as e:
-                    console.print(f"[yellow]Legacy JSON parsing failed: {e}[/yellow]")
-                    pass
+                    if answer_b_scores:
+                        detailed_scores_baseline = DetailedScores(
+                            correctness=answer_b_scores.get('correctness', 3),
+                            reasoning_depth=answer_b_scores.get('reasoning_depth', 3),
+                            instruction_adherence=answer_b_scores.get('instruction_adherence', 3),
+                            clarity_conciseness=answer_b_scores.get('clarity_conciseness', 3)
+                        )
+                    
+                    # Calculate average scores
+                    avg_target = sum(answer_a_scores.values()) / len(answer_a_scores) if answer_a_scores else 3.0
+                    avg_baseline = sum(answer_b_scores.values()) / len(answer_b_scores) if answer_b_scores else 3.0
+                    
+                    return QualityEvaluation(
+                        verdict=parsed.get('final_verdict', 'SIMILAR_QUALITY'),
+                        confidence=0.7,
+                        reasoning=parsed.get('comparative_reasoning', 'Legacy evaluation completed'),
+                        comparative_reasoning=parsed.get('comparative_reasoning'),
+                        detailed_scores_target=detailed_scores_target,
+                        detailed_scores_baseline=detailed_scores_baseline,
+                        score_target=avg_target,
+                        score_baseline=avg_baseline
+                    )
             
-            # 文本解析备选方案
+            # Text parsing fallback
             verdict = 'SIMILAR_QUALITY'
             if 'baseline_superior' in content.lower():
                 verdict = 'BASELINE_SUPERIOR'
@@ -555,24 +614,24 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             return QualityEvaluation(
                 verdict=verdict,
                 confidence=0.3,
-                reasoning=content[:500]
+                reasoning=content[:300] if content else "Legacy text parsing"
             )
             
         except Exception as e:
-            console.print(f"[yellow]Failed to parse legacy response: {e}[/yellow]")
+            console.print(f"[red]Legacy parsing failed: {e}[/red]")
             return None
     
     def _detect_cognitive_focus(self, probe_id: str, prompt_text: str) -> List[str]:
-        """自动检测探针的认知向量焦点"""
+        """Automatically detect cognitive vector focus of probe"""
         focus_vectors = []
         
-        # 关键词映射
+        # Keyword mapping
         keyword_mapping = {
-            "logical_reasoning": ["推理", "逻辑", "因果", "演绎", "归纳", "reasoning", "logic", "cause", "effect"],
-            "knowledge_application": ["知识", "事实", "信息", "应用", "knowledge", "fact", "information", "apply"],
-            "creative_synthesis": ["创意", "创造", "新颖", "组合", "creative", "novel", "combine", "synthesis"],
-            "instructional_fidelity": ["指令", "要求", "规则", "限制", "instruction", "requirement", "rule", "constraint"],
-            "safety_metacognition": ["安全", "风险", "危险", "局限", "safety", "risk", "danger", "limitation"]
+            "logical_reasoning": ["reasoning", "logic", "cause", "effect", "deduce", "infer", "analyze"],
+            "knowledge_application": ["knowledge", "fact", "information", "apply", "expert", "domain"],
+            "creative_synthesis": ["creative", "novel", "combine", "synthesis", "innovative", "original"],
+            "instructional_fidelity": ["instruction", "requirement", "rule", "constraint", "follow", "precise"],
+            "safety_metacognition": ["safety", "risk", "danger", "limitation", "uncertain", "harmful"]
         }
         
         prompt_lower = prompt_text.lower()
@@ -582,7 +641,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             if any(keyword in prompt_lower or keyword in probe_lower for keyword in keywords):
                 focus_vectors.append(vector)
         
-        # 如果没有检测到特定焦点，默认关注逻辑推理
+        # If no specific focus detected, default to logical reasoning
         if not focus_vectors:
             focus_vectors = ["logical_reasoning"]
         
@@ -590,18 +649,18 @@ Your entire output must be a single, valid JSON object, with no explanatory text
     
     async def compare_quality_with_llm(self, baseline: RawResult, target: RawResult, 
                                      original_probe_prompt: Optional[str] = None) -> Optional[QualityEvaluation]:
-        """使用H-CAF框架进行认知能力审计"""
+        """Conduct cognitive ability audit using H-CAF framework"""
         # Extract response contents
         baseline_content = self._extract_response_content(baseline)
         target_content = self._extract_response_content(target)
         
-        # 构建原始提示
+        # Build original prompt
         if original_probe_prompt:
             original_prompt = original_probe_prompt
         else:
             original_prompt = f"[Probe: {baseline.probe_id}] - Original prompt should be extracted from probe definition"
         
-        # 选择提示词模板
+        # Choose prompt template
         if self.use_hcaf:
             judge_prompt = self.hcaf_judge_prompt_template.format(
                 original_prompt=original_prompt,
@@ -622,19 +681,27 @@ Your entire output must be a single, valid JSON object, with no explanatory text
         if not response_data:
             return None
         
-        # 解析响应
+        # Parse response - Enhanced version
+        evaluation = None
+        
         if self.use_hcaf:
             evaluation = self._parse_hcaf_response(response_data)
+            # If H-CAF parsing fails or returns None, try legacy parsing
+            if not evaluation or not evaluation.cognitive_fingerprint_target:
+                console.print(f"[yellow]H-CAF parsing failed, falling back to legacy format[/yellow]")
+                legacy_eval = self._parse_legacy_response(response_data)
+                if legacy_eval:
+                    evaluation = legacy_eval
         else:
             evaluation = self._parse_legacy_response(response_data)
         
-        # 如果H-CAF解析失败，尝试传统解析作为备选
-        if self.use_hcaf and evaluation and not evaluation.cognitive_fingerprint_target:
-            console.print(f"[yellow]H-CAF parsing failed, falling back to legacy format[/yellow]")
-            evaluation = self._parse_legacy_response(response_data)
+        # If all parsing fails, create default evaluation
+        if not evaluation:
+            console.print(f"[red]All parsing methods failed, creating default evaluation[/red]")
+            evaluation = self._create_fallback_evaluation("All parsing methods failed")
         
-        # 补充认知焦点信息
-        if evaluation and not evaluation.cognitive_focus:
+        # Supplement cognitive focus information
+        if evaluation and not getattr(evaluation, 'cognitive_focus', None):
             evaluation.cognitive_focus = self._detect_cognitive_focus(baseline.probe_id, original_prompt)
         
         # Log the evaluation for debugging
@@ -648,14 +715,14 @@ Your entire output must be a single, valid JSON object, with no explanatory text
         return evaluation
     
     async def compare(self, baseline: RawResult, target: RawResult) -> EvaluationResult:
-        """执行完整的H-CAF认知能力比较"""
+        """Execute complete H-CAF cognitive ability comparison"""
         try:
-            # 基础性能指标
+            # Basic performance metrics
             latency_diff = self.compare_latency(baseline, target)
             cost_diff = self.compare_cost(baseline, target)
             tokens_diff = self.compare_tokens(baseline, target)
             
-            # H-CAF认知能力评估
+            # H-CAF cognitive ability assessment
             quality_evaluation = None
             if baseline.success and target.success:
                 quality_evaluation = await self.compare_quality_with_llm(baseline, target)
@@ -683,7 +750,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
     
     async def batch_compare(self, baseline_results: list[RawResult], 
                           target_results: list[RawResult]) -> list[EvaluationResult]:
-        """批量H-CAF认知能力比较"""
+        """Batch H-CAF cognitive ability comparison"""
         if len(baseline_results) != len(target_results):
             raise ValueError("Baseline and target result lists must be the same length")
         
@@ -694,14 +761,14 @@ Your entire output must be a single, valid JSON object, with no explanatory text
         return await asyncio.gather(*tasks, return_exceptions=True)
 
 
-# 保留旧的Comparator类名以向后兼容
+# Keep old Comparator class name for backward compatibility
 class Comparator(HCAFComparator):
-    """向后兼容的比较器类"""
+    """Backward compatible comparator class"""
     pass
 
 
 class SimpleComparator(HCAFComparator):
-    """简化版比较器，不使用LLM判决"""
+    """Simplified comparator without LLM judgment"""
     
     def __init__(self):
         # Initialize without judge config
@@ -712,7 +779,7 @@ class SimpleComparator(HCAFComparator):
     
     async def compare_quality_with_llm(self, baseline: RawResult, target: RawResult, 
                                      original_probe_prompt: Optional[str] = None) -> Optional[QualityEvaluation]:
-        """简单的质量比较，不使用LLM判决"""
+        """Simple quality comparison without LLM judgment"""
         # Simple heuristic: compare response lengths
         baseline_content = self._extract_response_content(baseline)
         target_content = self._extract_response_content(target)

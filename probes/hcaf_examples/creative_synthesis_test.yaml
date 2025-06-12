@@ -1,0 +1,56 @@
+# H-CAF Creative Synthesis Test Case
+# Tests AI's ability to combine unrelated concepts and generate novel ideas
+
+id: "creative_synthesis_01"
+category: "creative_synthesis"
+difficulty_level: "medium"
+description: "Test creative synthesis capability by combining unrelated concepts"
+
+# Expected cognitive focus areas
+expected_cognitive_focus:
+  - "creative_synthesis"
+  - "knowledge_application"
+
+# Test prompt
+prompt: |
+  Please design a new type of smart city transportation system that combines the following three unrelated concepts:
+  1. Honeybee swarming behavior
+  2. Quantum computing principles
+  3. Traditional origami art
+  
+  Your design should:
+  - Explain how each concept contributes to the transportation system
+  - Describe the novel aspects that emerge from this combination
+  - Consider practical implementation challenges
+  - Propose at least 3 specific innovative features
+
+# Tags for categorization
+tags:
+  - "creative_thinking"
+  - "concept_combination"
+  - "innovation"
+  - "system_design"
+
+# Notes for evaluators
+evaluation_notes: |
+  This probe tests the AI's ability to:
+  1. Synthesize disparate concepts into a coherent new idea
+  2. Identify meaningful connections between unrelated domains
+  3. Generate novel solutions by creative combination
+  4. Consider practical implementation aspects
+  
+  Key indicators of strong creative synthesis:
+  - Clear explanation of how each concept contributes
+  - Novel features that genuinely emerge from the combination
+  - Creative but plausible implementation ideas
+  - Evidence of abstract thinking and analogical reasoning
+
+probe_id: "hcaf_creative_synthesis_concept_fusion"
+probe_type: "quality"
+description: "H-CAF创造性综合测试：概念融合和创新思维评估"
+
+# H-CAF认知向量标签
+cognitive_focus: ["creative_synthesis", "instructional_fidelity"]
+
+max_tokens: 600
+temperature: 0.7 

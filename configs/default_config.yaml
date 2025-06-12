@@ -6,12 +6,77 @@ api_keys:
   platform_b_key: ${PLATFORM_B_KEY}           # 待测试平台B的API key（可选）
   gemini_key: ${GEMINI_API_KEY}                # Google Gemini API key（用于裁判）
 
-# Baseline platform definition (your ground truth/基准平台)
+# TrustDiff Enhanced Configuration with H-CAF Framework Support
+# Configuration for Hierarchical Cognitive Assessment Framework testing
+
+# Target platform configuration (platform to be tested)
+target:
+  name: "target_platform"
+  api_base: "https://api.example.com/v1"
+  model: "target-model"
+  api_key_env: "TARGET_API_KEY"
+  max_tokens: 1000
+  temperature: 0.7
+
+# Baseline platform configuration (reference/ground truth platform)
 baseline:
-  name: "OpenAI_Official"
+  name: "baseline_platform"
   api_base: "https://api.openai.com/v1"
-  api_key_env: "openai"
-  model: "gpt-4o"                              # 建议使用更强的模型作为基准
+  model: "gpt-4"
+  api_key_env: "OPENAI_API_KEY"
+  max_tokens: 1000
+  temperature: 0.7
+
+# Judge platform configuration (for quality evaluation)
+judge:
+  name: "judge_platform"
+  api_base: "https://api.openai.com/v1"
+  model: "gpt-4"
+  api_key_env: "OPENAI_API_KEY"
+  max_tokens: 1500  # Increased for H-CAF analysis
+  temperature: 0.1  # Lower temperature for consistent evaluation
+
+# Runtime configuration
+run_config:
+  max_concurrency: 5       # Reduced from 10 to improve stability
+  timeout_seconds: 60      # Increased from 30 to handle complex requests
+  output_format: "json"    # Output format: json, yaml, csv
+  save_raw_responses: true # Whether to save raw API responses
+
+# H-CAF Framework Configuration
+hcaf_config:
+  use_hcaf_framework: true          # Enable H-CAF cognitive assessment
+  hcaf_confidence_threshold: 0.6    # Minimum confidence for H-CAF results
+  fallback_to_legacy: true          # Fall back to legacy scoring if H-CAF fails
+  
+  # Cognitive vector focus areas for automatic detection
+  cognitive_vectors:
+    logical_reasoning: ["reasoning", "logic", "cause", "effect", "deduce", "infer", "analyze"]
+    knowledge_application: ["knowledge", "fact", "information", "apply", "expert", "domain"]
+    creative_synthesis: ["creative", "novel", "combine", "synthesis", "innovative", "original"]
+    instructional_fidelity: ["instruction", "requirement", "rule", "constraint", "follow", "precise"]
+    safety_metacognition: ["safety", "risk", "danger", "limitation", "uncertain", "harmful"]
+
+# Probe directories and patterns
+probes:
+  directories:
+    - "probes/"
+    - "probes/hcaf_examples/"  # H-CAF specific test cases
+  patterns:
+    - "*.yaml"
+    - "*.yml"
+
+# Output configuration
+output:
+  directory: "output"
+  database_enabled: true
+  hcaf_analysis_enabled: true  # Generate detailed H-CAF analysis reports
+  
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "trustdiff.log"
 
 # Target platforms to test (待检测的平台列表)
 targets:
@@ -32,14 +97,6 @@ targets:
   #   api_base: "https://api.platform-b.com/v1"
   #   api_key_env: "platform_b_key"
   #   model: "gpt-4o"
-
-# Judge configuration - 使用Gemini作为裁判
-judge:
-  name: "Gemini_Judge"
-  api_base: "https://generativelanguage.googleapis.com/v1beta"
-  api_key_env: "gemini_key"
-  model: "gemini-1.5-pro"    # 推荐使用稳定的1.5-pro版本
-  # 其他可选模型: "gemini-1.5-flash", "gemini-2.0-flash-exp"
 
 # Run configuration
 run_settings:
