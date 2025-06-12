@@ -45,5 +45,5 @@ judge:
 run_settings:
   probe_dir: "./probes"
   output_dir: "./outputs"
-  concurrency: 10           # Number of parallel requests
-  timeout_seconds: 30       # Request timeout 
+  concurrency: 5            # Number of parallel requests - 降低并发数减少网络压力
+  timeout_seconds: 60       # Request timeout - 增加到60秒解决超时问题 

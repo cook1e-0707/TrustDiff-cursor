@@ -112,7 +112,7 @@ class RunConfig(BaseModel):
     probe_dir: str = "./probes"
     output_dir: str = "./outputs"
     concurrency: int = 10
-    timeout_seconds: int = 30
+    timeout_seconds: int = 60
     
     # API keys
     api_keys: Dict[str, str] = Field(default_factory=dict)

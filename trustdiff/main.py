@@ -94,7 +94,7 @@ def init(
                 "probe_dir": "./probes",
                 "output_dir": "./outputs",
                 "concurrency": 10,
-                "timeout_seconds": 30
+                "timeout_seconds": 60
             }
         }
         

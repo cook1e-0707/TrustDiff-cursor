@@ -15,7 +15,7 @@ console = Console()
 class Comparator:
     """Comparator that acts as an oracle to evaluate differences between platforms."""
     
-    def __init__(self, judge_config: PlatformConfig, api_keys: Dict[str, str], timeout_seconds: int = 30):
+    def __init__(self, judge_config: PlatformConfig, api_keys: Dict[str, str], timeout_seconds: int = 60):
         self.judge_config = judge_config
         self.api_keys = api_keys
         self.timeout_seconds = timeout_seconds
