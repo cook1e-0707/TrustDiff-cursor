@@ -1,449 +1,271 @@
 """
-Core testing engine for TrustDiff using asyncio and httpx.
+Core evaluation engine for the TrustDiff H-CAF Framework.
+Orchestrates probe execution, platform comparison, and result aggregation.
 """
 
-import os
 import asyncio
-import json
+import os
+import time
+import httpx
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-import httpx
-import yaml
-from rich.console import Console
-from rich.progress import Progress, TaskID
 
-from .models import RunConfig, Probe, RawResult, EvaluationResult, TestSummary, ProbeMessage
-from .storage import Storage
-from .comparator import Comparator
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+
+from .models import (
+    RunConfig, ProbeDefinition, RawResult, EvaluationResult, TrustDiffReport, 
+    ExecutionPlan, PlatformConfig
+)
+from .storage import TrustDiffStorage
+from .comparator import HCAFComparator
 
 console = Console()
 
 
-class Engine:
-    """Core testing engine that orchestrates the entire test process."""
+class TrustDiffEngine:
+    """
+    Orchestrates the TrustDiff evaluation process, from loading probes
+    to running comparisons and generating a final report.
+    """
     
-    def __init__(self, config: RunConfig):
+    def __init__(self, config: Dict[str, Any], run_config: RunConfig, storage: TrustDiffStorage):
         self.config = config
-        self.storage: Optional[Storage] = None
-        self.comparator: Optional[Comparator] = None
-        self.run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.run_config = run_config
+        self.storage = storage
+        self.api_keys = self._load_api_keys()
         
-    async def _initialize_run(self) -> str:
-        """Initialize a new test run."""
-        output_dir = Path(self.config.output_dir) / self.run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Initialize platforms
+        self.target_platform = self._create_platform_config('target')
+        self.baseline_platform = self._create_platform_config('baseline')
+        self.judge_platform = self._create_platform_config('judge') if 'judge' in config else None
         
-        self.storage = Storage(str(output_dir))
-        await self.storage.initialize()
+        # Initialize execution plan
+        self.execution_plan = ExecutionPlan(
+            probes=[],
+            target_platform=self.target_platform,
+            baseline_platform=self.baseline_platform,
+            judge_platform=self.judge_platform,
+            run_config=self.run_config
+        )
         
-        if self.config.judge:
-            use_hcaf = getattr(self.config, 'use_hcaf_framework', True)  # 默认使用H-CAF框架
-            self.comparator = Comparator(
-                self.config.judge, 
-                self.config.api_keys, 
-                self.config.timeout_seconds,
-                use_hcaf=use_hcaf
-            )
-        
-        return str(output_dir)
+        # Initialize comparator
+        self.comparator = HCAFComparator(
+            judge_config=self.judge_platform,
+            api_keys=self.api_keys,
+            timeout_seconds=self.run_config.timeout_seconds,
+            use_hcaf=self.run_config.use_hcaf_framework
+        ) if self.judge_platform else None
+
+    def _load_api_keys(self) -> Dict[str, str]:
+        """Load API keys from environment variables."""
+        api_keys = {}
+        # Scan through platform configs to find all required API key env vars
+        for platform_type in ['target', 'baseline', 'judge']:
+            if platform_type in self.config:
+                key_env = self.config[platform_type].get('api_key_env')
+                if key_env and key_env not in api_keys:
+                    api_keys[key_env] = os.getenv(key_env, "")
+        return api_keys
     
-    def _load_probes(self, probe_filter: Optional[str] = None) -> List[Probe]:
-        """Load probe definitions from the probe directory."""
-        probe_dir = Path(self.config.probe_dir)
-        if not probe_dir.exists():
-            console.print(f"[red]Probe directory not found: {probe_dir}[/red]")
-            return []
+    def _create_platform_config(self, platform_type: str) -> PlatformConfig:
+        """Create a PlatformConfig object from the main configuration."""
+        p_config = self.config.get(platform_type, {})
+        return PlatformConfig(
+            name=p_config.get('name', platform_type),
+            api_base=p_config.get('api_base', ''),
+            model=p_config.get('model', ''),
+            api_key_env=p_config.get('api_key_env', ''),
+            max_tokens=p_config.get('max_tokens', 1000),
+            temperature=p_config.get('temperature', 0.7),
+            additional_params=p_config.get('additional_params')
+        )
+
+    async def load_probes_from_config(self):
+        """Load all probe definitions from directories specified in the config."""
+        probe_dirs = self.config.get('probes', {}).get('directories', ['probes/'])
+        probe_patterns = self.config.get('probes', {}).get('patterns', ['*.yaml', '*.yml'])
         
-        probes = []
-        for probe_file in probe_dir.rglob("*.yaml"):
-            try:
-                with open(probe_file, 'r', encoding='utf-8') as f:
-                    probe_data = yaml.safe_load(f)
-                
-                # Convert prompt format
-                if 'prompt' in probe_data:
-                    if isinstance(probe_data['prompt'], list):
-                        # Already in correct format
-                        pass
-                    elif isinstance(probe_data['prompt'], str):
-                        # Convert string to message format
-                        probe_data['prompt'] = [{"role": "user", "content": probe_data['prompt']}]
-                    elif isinstance(probe_data['prompt'], dict):
-                        # Convert single message dict to list
-                        probe_data['prompt'] = [probe_data['prompt']]
-                
-                probe = Probe(**probe_data)
-                
-                # Apply filter if specified
-                if probe_filter and probe_filter.lower() not in probe.probe_id.lower():
-                    continue
-                    
-                probes.append(probe)
-                
-            except Exception as e:
-                console.print(f"[yellow]Warning: Failed to load probe {probe_file}: {e}[/yellow]")
-        
-        console.print(f"[blue]Loaded {len(probes)} probes[/blue]")
-        return probes
-    
-    async def _make_api_request(
-        self, 
-        probe: Probe, 
-        platform_config, 
-        semaphore: asyncio.Semaphore
-    ) -> RawResult:
-        """Make an API request to a platform."""
-        async with semaphore:
-            start_time = datetime.now()
+        all_probes = []
+        for directory in probe_dirs:
+            p_dir = Path(directory)
+            if not p_dir.exists():
+                console.print(f"[yellow]Warning: Probe directory not found: {p_dir}[/yellow]")
+                continue
             
+            for pattern in probe_patterns:
+                for probe_file in p_dir.rglob(pattern):
+                    try:
+                        with open(probe_file, 'r', encoding='utf-8') as f:
+                            probe_data = yaml.safe_load(f)
+                        
+                        probe = ProbeDefinition(**probe_data)
+                        all_probes.append(probe)
+                    except Exception as e:
+                        console.print(f"[red]Failed to load probe {probe_file}: {e}[/red]")
+                        
+        self.execution_plan.probes = all_probes
+
+    async def _send_request(self, probe: ProbeDefinition, platform: PlatformConfig, semaphore: asyncio.Semaphore) -> RawResult:
+        """Send a single API request to a platform."""
+        async with semaphore:
+            start_time = time.monotonic()
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_keys.get(platform.api_key_env, '')}"
+            }
+            
+            body = {
+                "model": platform.model,
+                "messages": [{"role": "user", "content": probe.prompt}],
+                "max_tokens": platform.max_tokens,
+                "temperature": platform.temperature,
+                **(platform.additional_params or {})
+            }
+
             try:
-                # Get API key
-                api_key = self.config.api_keys.get(platform_config.api_key_env, "")
-                if not api_key:
-                    console.print(f"[yellow]Warning: No API key found for {platform_config.name}[/yellow]")
-                
-                # Prepare headers with flexible authentication
-                headers = {
-                    "Content-Type": "application/json"
-                }
-                
-                # Handle different authentication types
-                if api_key:
-                    auth_type = platform_config.auth_type or "bearer"
-                    api_key_header = platform_config.api_key_header or "Authorization"
-                    api_key_prefix = platform_config.api_key_prefix or "Bearer"
-                    
-                    if auth_type == "bearer":
-                        headers[api_key_header] = f"{api_key_prefix} {api_key}"
-                    elif auth_type == "api_key":
-                        headers[api_key_header] = api_key
-                    elif auth_type == "custom":
-                        # For custom auth, the user should provide headers directly
-                        if platform_config.headers and api_key_header in platform_config.headers:
-                            headers.update(platform_config.headers)
-                        else:
-                            headers[api_key_header] = api_key
-                
-                # Add any additional custom headers
-                if platform_config.headers:
-                    headers.update(platform_config.headers)
-                
-                # Prepare request body
-                messages = []
-                for msg in probe.prompt:
-                    messages.append({
-                        "role": msg.role,
-                        "content": msg.content
-                    })
-                
-                body = {
-                    "model": platform_config.model or "gpt-3.5-turbo",
-                    "messages": messages,
-                    "max_tokens": probe.max_tokens or 1000,
-                    "temperature": probe.temperature or 0.7
-                }
-                
-                # Make request - Fix URL concatenation with custom endpoint
-                endpoint_path = platform_config.endpoint_path or "/chat/completions"
-                api_url = platform_config.api_base.rstrip('/') + endpoint_path
-                
-                console.print(f"[dim]Making request to: {api_url}[/dim]")
-                console.print(f"[dim]Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}[/dim]")
-                
-                async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+                async with httpx.AsyncClient(timeout=self.run_config.timeout_seconds) as client:
                     response = await client.post(
-                        api_url,
+                        f"{platform.api_base.rstrip('/')}/chat/completions",
                         headers=headers,
                         json=body
                     )
                     
-                    latency = (datetime.now() - start_time).total_seconds() * 1000
+                    latency_ms = (time.monotonic() - start_time) * 1000
                     
                     if response.status_code == 200:
-                        try:
-                            response_data = response.json()
-                            
-                            # Check if response contains error (some APIs return 200 but with error content)
-                            if 'error' in response_data:
-                                console.print(f"[red]API returned error in 200 response: {response_data['error']}[/red]")
-                                return RawResult(
-                                    probe_id=probe.probe_id,
-                                    platform_name=platform_config.name,
-                                    success=False,
-                                    error_message=f"API Error: {response_data['error']}",
-                                    latency_ms=latency
-                                )
-                            
-                            # Validate response structure
-                            if 'choices' not in response_data or not response_data['choices']:
-                                console.print(f"[red]Invalid response structure from {platform_config.name}[/red]")
-                                return RawResult(
-                                    probe_id=probe.probe_id,
-                                    platform_name=platform_config.name,
-                                    success=False,
-                                    error_message="Invalid response structure: no choices found",
-                                    latency_ms=latency
-                                )
-                            
-                            # Extract token usage if available
-                            tokens_used = None
-                            if 'usage' in response_data:
-                                tokens_used = response_data['usage'].get('total_tokens')
-                            
-                            console.print(f"[green]✓ {platform_config.name} - {probe.probe_id} ({latency:.1f}ms)[/green]")
-                            
-                            return RawResult(
-                                probe_id=probe.probe_id,
-                                platform_name=platform_config.name,
-                                success=True,
-                                response_data=response_data,
-                                latency_ms=latency,
-                                tokens_used=tokens_used
-                            )
-                        except json.JSONDecodeError:
-                            console.print(f"[red]Failed to parse JSON response from {platform_config.name}[/red]")
-                            return RawResult(
-                                probe_id=probe.probe_id,
-                                platform_name=platform_config.name,
-                                success=False,
-                                error_message=f"Invalid JSON response: {response.text[:200]}",
-                                latency_ms=latency
-                            )
-                    else:
-                        error_msg = f"HTTP {response.status_code}: {response.text}"
-                        console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - {error_msg}[/red]")
                         return RawResult(
-                            probe_id=probe.probe_id,
-                            platform_name=platform_config.name,
+                            probe_id=probe.id,
+                            platform_name=platform.name,
+                            success=True,
+                            response_data=response.json(),
+                            latency_ms=latency_ms,
+                            timestamp=datetime.now()
+                        )
+                    else:
+                        return RawResult(
+                            probe_id=probe.id,
+                            platform_name=platform.name,
                             success=False,
-                            error_message=error_msg,
-                            latency_ms=latency
+                            error_message=f"HTTP {response.status_code}: {response.text[:200]}",
+                            latency_ms=latency_ms,
+                            timestamp=datetime.now()
                         )
-                        
-            except httpx.TimeoutException:
-                latency = (datetime.now() - start_time).total_seconds() * 1000
-                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Timeout after {latency:.1f}ms[/red]")
-                return RawResult(
-                    probe_id=probe.probe_id,
-                    platform_name=platform_config.name,
-                    success=False,
-                    error_message="Request timeout",
-                    latency_ms=latency
-                )
-            except httpx.ConnectError as e:
-                latency = (datetime.now() - start_time).total_seconds() * 1000
-                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Connection failed: {e}[/red]")
-                return RawResult(
-                    probe_id=probe.probe_id,
-                    platform_name=platform_config.name,
-                    success=False,
-                    error_message=f"Connection error: {str(e)}",
-                    latency_ms=latency
-                )
             except Exception as e:
-                latency = (datetime.now() - start_time).total_seconds() * 1000
-                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Unexpected error: {e}[/red]")
+                latency_ms = (time.monotonic() - start_time) * 1000
                 return RawResult(
-                    probe_id=probe.probe_id,
-                    platform_name=platform_config.name,
+                    probe_id=probe.id,
+                    platform_name=platform.name,
                     success=False,
-                    error_message=f"Unexpected error: {str(e)}",
-                    latency_ms=latency
+                    error_message=str(e),
+                    latency_ms=latency_ms,
+                    timestamp=datetime.now()
                 )
-    
-    async def _run_all_requests(self, probes: List[Probe]) -> Dict[str, List[RawResult]]:
-        """Run all API requests concurrently."""
-        semaphore = asyncio.Semaphore(self.config.concurrency)
-        tasks = []
+
+    async def _run_probe_on_platforms(self, probe: ProbeDefinition, progress: Progress, task: TaskID) -> (RawResult, RawResult):
+        """Run a single probe on both baseline and target platforms."""
+        semaphore = asyncio.Semaphore(2) # For a single probe, max 2 concurrent requests
         
-        # Create tasks for all probe-platform combinations
-        for probe in probes:
-            # Baseline request
-            tasks.append(self._make_api_request(probe, self.config.baseline, semaphore))
+        baseline_task = self._send_request(probe, self.baseline_platform, semaphore)
+        target_task = self._send_request(probe, self.target_platform, semaphore)
+        
+        baseline_result, target_result = await asyncio.gather(baseline_task, target_task)
+        
+        progress.update(task, advance=1)
+        return baseline_result, target_result
+
+    async def run_complete_evaluation(self) -> TrustDiffReport:
+        """
+        Execute the full evaluation suite: run all probes, compare results,
+        and generate a comprehensive report.
+        """
+        start_time = time.monotonic()
+        
+        raw_results_baseline: List[RawResult] = []
+        raw_results_target: List[RawResult] = []
+        evaluation_results: List[EvaluationResult] = []
+        
+        total_probes = len(self.execution_plan.probes)
+        
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            transient=True
+        ) as progress:
+            # Phase 1: Run probes
+            probe_task = progress.add_task("[cyan]Running Probes...", total=total_probes)
+            probe_run_tasks = [self._run_probe_on_platforms(probe, progress, probe_task) for probe in self.execution_plan.probes]
             
-            # Target platform requests
-            for target in self.config.targets:
-                tasks.append(self._make_api_request(probe, target, semaphore))
-        
-        console.print(f"[blue]Running {len(tasks)} API requests with concurrency {self.config.concurrency}...[/blue]")
-        
-        # Execute all requests
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Group results by probe_id
-        grouped_results: Dict[str, List[RawResult]] = {}
-        for result in results:
-            if isinstance(result, RawResult):
-                if result.probe_id not in grouped_results:
-                    grouped_results[result.probe_id] = []
-                grouped_results[result.probe_id].append(result)
+            probe_results = await asyncio.gather(*probe_run_tasks)
+            
+            for baseline_res, target_res in probe_results:
+                raw_results_baseline.append(baseline_res)
+                raw_results_target.append(target_res)
+
+            # Phase 2: Run comparisons
+            if self.comparator:
+                compare_task = progress.add_task("[magenta]Comparing Results...", total=total_probes)
                 
-                # Save raw result
-                if self.storage:
-                    await self.storage.save_raw_result(result)
-            else:
-                console.print(f"[red]Request failed with exception: {result}[/red]")
-        
-        return grouped_results
-    
-    async def _evaluate_results(self, grouped_results: Dict[str, List[RawResult]]) -> List[EvaluationResult]:
-        """Evaluate and compare results."""
-        evaluations = []
-        
-        if not self.comparator:
-            console.print("[yellow]No judge configured, skipping quality evaluation[/yellow]")
-            # Return basic evaluations without quality assessment
-            for probe_id, results in grouped_results.items():
-                baseline_result = None
-                target_results = []
-                
-                for result in results:
-                    if result.platform_name == self.config.baseline.name:
-                        baseline_result = result
-                    else:
-                        target_results.append(result)
-                
-                if baseline_result:
-                    for target_result in target_results:
-                        # Only create evaluation if both results are available
-                        # Success/failure will be determined by individual result success flags
-                        evaluation_success = baseline_result.success and target_result.success
-                        
-                        if not evaluation_success:
-                            console.print(f"[yellow]Skipping evaluation for {probe_id} - {target_result.platform_name}: baseline_success={baseline_result.success}, target_success={target_result.success}[/yellow]")
-                        
-                        evaluation = EvaluationResult(
-                            probe_id=probe_id,
-                            target_platform=target_result.platform_name,
-                            baseline_platform=baseline_result.platform_name,
-                            latency_diff_ms=self._calc_latency_diff(baseline_result, target_result) if evaluation_success else None,
-                            cost_diff=self._calc_cost_diff(baseline_result, target_result) if evaluation_success else None,
-                            tokens_diff=self._calc_tokens_diff(baseline_result, target_result) if evaluation_success else None,
-                            evaluation_success=evaluation_success,
-                            error_message=target_result.error_message if not target_result.success else baseline_result.error_message if not baseline_result.success else None
+                comparison_tasks = []
+                for baseline_res, target_res in zip(raw_results_baseline, raw_results_target):
+                    # Pass the original probe prompt to the comparator
+                    probe = next((p for p in self.execution_plan.probes if p.id == baseline_res.probe_id), None)
+                    original_prompt = probe.prompt if probe else "N/A"
+                    
+                    comparison_tasks.append(
+                        self.comparator.compare_quality_with_llm(
+                            baseline_res, target_res, original_probe_prompt=original_prompt
                         )
-                        evaluations.append(evaluation)
+                    )
+                
+                quality_evaluations = await asyncio.gather(*comparison_tasks)
+                progress.update(compare_task, completed=total_probes)
+
+                # Assemble final evaluation results
+                for i in range(total_probes):
+                    baseline_res = raw_results_baseline[i]
+                    target_res = raw_results_target[i]
+                    quality_eval = quality_evaluations[i]
+                    
+                    eval_res = EvaluationResult(
+                        probe_id=baseline_res.probe_id,
+                        target_platform=target_res.platform_name,
+                        baseline_platform=baseline_res.platform_name,
+                        evaluation_success=quality_eval is not None,
+                        latency_diff_ms=target_res.latency_ms - baseline_res.latency_ms if baseline_res.latency_ms and target_res.latency_ms else None,
+                        cost_diff=target_res.cost_estimate - baseline_res.cost_estimate if baseline_res.cost_estimate and target_res.cost_estimate else None,
+                        tokens_diff=target_res.tokens_used - baseline_res.tokens_used if baseline_res.tokens_used and target_res.tokens_used else None,
+                        quality_evaluation=quality_eval,
+                        timestamp=datetime.now()
+                    )
+                    evaluation_results.append(eval_res)
             
-            return evaluations
+        end_time = time.monotonic()
         
-        # Full evaluation with quality assessment
-        comparison_tasks = []
-        for probe_id, results in grouped_results.items():
-            baseline_result = None
-            target_results = []
-            
-            for result in results:
-                if result.platform_name == self.config.baseline.name:
-                    baseline_result = result
-                else:
-                    target_results.append(result)
-            
-            if baseline_result:
-                for target_result in target_results:
-                    # Only run quality comparison if both requests succeeded
-                    if baseline_result.success and target_result.success:
-                        comparison_tasks.append(
-                            self.comparator.compare(baseline_result, target_result)
-                        )
-                    else:
-                        # Create a failed evaluation for failed requests
-                        error_msg = target_result.error_message if not target_result.success else baseline_result.error_message
-                        console.print(f"[yellow]Creating failed evaluation for {probe_id} - {target_result.platform_name}: {error_msg}[/yellow]")
-                        
-                        async def create_failed_evaluation():
-                            return EvaluationResult(
-                                probe_id=probe_id,
-                                target_platform=target_result.platform_name,
-                                baseline_platform=baseline_result.platform_name,
-                                evaluation_success=False,
-                                error_message=error_msg
-                            )
-                        
-                        comparison_tasks.append(create_failed_evaluation())
+        # Calculate summary stats
+        target_success_count = sum(1 for r in raw_results_target if r.success)
+        baseline_success_count = sum(1 for r in raw_results_baseline if r.success)
+        eval_success_count = sum(1 for r in evaluation_results if r.evaluation_success)
+
+        report = TrustDiffReport(
+            execution_plan=self.execution_plan,
+            raw_results_target=raw_results_target,
+            raw_results_baseline=raw_results_baseline,
+            evaluation_results=evaluation_results,
+            execution_timestamp=datetime.now(),
+            total_runtime_seconds=end_time - start_time,
+            success_rate_target=target_success_count / total_probes if total_probes > 0 else 0,
+            success_rate_baseline=baseline_success_count / total_probes if total_probes > 0 else 0,
+            evaluation_success_rate=eval_success_count / total_probes if total_probes > 0 else 0
+        )
         
-        console.print(f"[blue]Running {len(comparison_tasks)} evaluations...[/blue]")
-        evaluations = await asyncio.gather(*comparison_tasks, return_exceptions=True)
-        
-        # Filter out exceptions and convert results
-        valid_evaluations = []
-        for eval_result in evaluations:
-            if isinstance(eval_result, EvaluationResult):
-                valid_evaluations.append(eval_result)
-            elif isinstance(eval_result, Exception):
-                console.print(f"[red]Evaluation failed with exception: {eval_result}[/red]")
-        
-        # Save evaluations
-        if self.storage:
-            for evaluation in valid_evaluations:
-                await self.storage.save_evaluation(evaluation)
-        
-        return valid_evaluations
-    
-    def _calc_latency_diff(self, baseline: RawResult, target: RawResult) -> Optional[float]:
-        """Calculate latency difference (positive = target slower, negative = target faster)."""
-        if baseline.latency_ms is not None and target.latency_ms is not None:
-            diff = target.latency_ms - baseline.latency_ms
-            # Log extreme differences for debugging
-            if abs(diff) > 30000:  # > 30 seconds seems unrealistic
-                console.print(f"[yellow]Unusual latency difference: {target.platform_name} vs {baseline.platform_name}: {diff:.1f}ms[/yellow]")
-                console.print(f"[dim]Target: {target.latency_ms:.1f}ms, Baseline: {baseline.latency_ms:.1f}ms[/dim]")
-            return diff
-        return None
-    
-    def _calc_cost_diff(self, baseline: RawResult, target: RawResult) -> Optional[float]:
-        """Calculate cost difference."""
-        if baseline.cost_estimate is not None and target.cost_estimate is not None:
-            return target.cost_estimate - baseline.cost_estimate
-        return None
-    
-    def _calc_tokens_diff(self, baseline: RawResult, target: RawResult) -> Optional[int]:
-        """Calculate token usage difference."""
-        if baseline.tokens_used is not None and target.tokens_used is not None:
-            return target.tokens_used - baseline.tokens_used
-        return None
-    
-    async def run_test_suite(self, probe_filter: Optional[str] = None) -> Optional[TestSummary]:
-        """Run the complete test suite."""
-        try:
-            # Initialize
-            output_dir = await self._initialize_run()
-            
-            # Load probes
-            probes = self._load_probes(probe_filter)
-            if not probes:
-                console.print("[red]No probes found to run[/red]")
-                return None
-            
-            # Run requests
-            grouped_results = await self._run_all_requests(probes)
-            
-            # Evaluate results
-            evaluations = await self._evaluate_results(grouped_results)
-            
-            # Generate summary
-            total_evaluations = len(evaluations)
-            successful_evaluations = sum(1 for e in evaluations if e.evaluation_success)
-            success_rate = successful_evaluations / total_evaluations if total_evaluations > 0 else 0
-            
-            summary = TestSummary(
-                run_id=self.run_id,
-                timestamp=datetime.now(),
-                total_probes=len(probes),
-                total_platforms=len(self.config.targets),
-                total_evaluations=total_evaluations,
-                success_rate=success_rate,
-                output_dir=output_dir
-            )
-            
-            console.print(f"[green]✓ Test suite completed[/green]")
-            console.print(f"  - Probes: {summary.total_probes}")
-            console.print(f"  - Platforms: {summary.total_platforms}")
-            console.print(f"  - Evaluations: {summary.total_evaluations}")
-            console.print(f"  - Success rate: {summary.success_rate:.2%}")
-            
-            return summary
-            
-        except Exception as e:
-            console.print(f"[red]Test suite failed: {e}[/red]")
-            return None 
+        return report
+
+# Alias for backward compatibility if needed, though direct use of TrustDiffEngine is preferred.
+Engine = TrustDiffEngine 
