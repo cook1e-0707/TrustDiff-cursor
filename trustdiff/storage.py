@@ -798,52 +798,6 @@ class TrustDiffStorage:
         finally:
             conn.close()
     
-    async def save_test_summary(self, summary: TestSummary):
-        """Save test run summary with H-CAF data."""
-        await asyncio.get_event_loop().run_in_executor(
-            None, self._insert_test_summary, summary
-        )
-    
-    def _insert_test_summary(self, summary: TestSummary):
-        """Insert test summary into database with H-CAF data."""
-        conn = sqlite3.connect(self.db_path)
-        try:
-            # H-CAF summary fields
-            total_hcaf_evaluations = None
-            avg_overall_degradation = None
-            most_degraded_vector = None
-            cognitive_stability_rating = None
-            
-            if summary.cognitive_benchmark_summary:
-                hcaf_summary = summary.cognitive_benchmark_summary
-                total_hcaf_evaluations = hcaf_summary.total_cognitive_evaluations
-                avg_overall_degradation = hcaf_summary.overall_degradation_score
-                most_degraded_vector = hcaf_summary.most_degraded_vectors[0] if hcaf_summary.most_degraded_vectors else None
-                cognitive_stability_rating = hcaf_summary.cognitive_stability_rating
-            
-            conn.execute("""
-                INSERT OR REPLACE INTO test_runs (
-                    run_id, timestamp, total_probes, total_platforms,
-                    total_evaluations, success_rate,
-                    total_hcaf_evaluations, avg_overall_degradation,
-                    most_degraded_vector, cognitive_stability_rating
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                summary.run_id,
-                summary.timestamp.isoformat(),
-                summary.total_probes,
-                summary.total_platforms,
-                summary.total_evaluations,
-                summary.success_rate,
-                total_hcaf_evaluations,
-                avg_overall_degradation,
-                most_degraded_vector,
-                cognitive_stability_rating
-            ))
-            conn.commit()
-        finally:
-            conn.close()
-    
     async def get_evaluations(self) -> List[Dict[str, Any]]:
         """Get all evaluations from database."""
         return await asyncio.get_event_loop().run_in_executor(
