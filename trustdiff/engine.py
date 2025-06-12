@@ -38,7 +38,7 @@ class Engine:
         await self.storage.initialize()
         
         if self.config.judge:
-            self.comparator = Comparator(self.config.judge, self.config.api_keys)
+            self.comparator = Comparator(self.config.judge, self.config.api_keys, self.config.timeout_seconds)
         
         return str(output_dir)
     

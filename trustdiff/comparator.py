@@ -15,9 +15,10 @@ console = Console()
 class Comparator:
     """Comparator that acts as an oracle to evaluate differences between platforms."""
     
-    def __init__(self, judge_config: PlatformConfig, api_keys: Dict[str, str]):
+    def __init__(self, judge_config: PlatformConfig, api_keys: Dict[str, str], timeout_seconds: int = 30):
         self.judge_config = judge_config
         self.api_keys = api_keys
+        self.timeout_seconds = timeout_seconds
         
         # Enhanced judge prompt template based on README.md specifications
         self.judge_prompt_template = """
@@ -181,7 +182,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             "temperature": 0.1  # Low temperature for consistent evaluation
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
                 f"{self.judge_config.api_base}/chat/completions",
                 headers=headers,
@@ -238,7 +239,7 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             ]
         }
         
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(
                 f"{self.judge_config.api_base}/models/{model_name}:generateContent?key={api_key}",
                 headers=headers,

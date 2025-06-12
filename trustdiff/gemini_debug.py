@@ -55,7 +55,7 @@ async def test_gemini_api(api_key: str, model: str = "gemini-1.5-pro") -> None:
         console.print(f"\n[cyan]Testing: {config['name']}[/cyan]")
         
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
                 
                 response = await client.post(
@@ -114,7 +114,7 @@ async def test_gemini_models(api_key: str) -> None:
         console.print(f"\n[cyan]Testing model: {model}[/cyan]")
         
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=60.0) as client:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
                 
                 test_body = {

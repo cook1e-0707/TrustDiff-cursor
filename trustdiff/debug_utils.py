@@ -40,7 +40,7 @@ async def test_platform_connection(platform_config: PlatformConfig, api_key: str
         
         api_url = platform_config.api_base.rstrip('/') + '/chat/completions'
         
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 api_url,
                 headers=headers,
