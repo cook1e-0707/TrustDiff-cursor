@@ -16,6 +16,7 @@ from .models import RunConfig
 from .engine import Engine
 from .reporter import Reporter
 from .debug_utils import validate_configuration
+from .gemini_debug import test_gemini_api, test_gemini_models
 
 app = typer.Typer(
     name="trustdiff",
@@ -193,6 +194,33 @@ def debug(
         
     except Exception as e:
         console.print(f"[red]Configuration error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command() 
+def test_gemini(
+    model: str = typer.Option("gemini-1.5-pro", help="Gemini model to test"),
+    test_models: bool = typer.Option(False, help="Test all available Gemini models")
+):
+    """Test Gemini API functionality and model availability."""
+    try:
+        import os
+        
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            console.print("[red]❌ GEMINI_API_KEY environment variable not set[/red]")
+            console.print("[yellow]Please run: export GEMINI_API_KEY='your-gemini-api-key'[/yellow]")
+            raise typer.Exit(1)
+        
+        async def run_tests():
+            if test_models:
+                await test_gemini_models(api_key)
+            await test_gemini_api(api_key, model)
+        
+        asyncio.run(run_tests())
+        
+    except Exception as e:
+        console.print(f"[red]Gemini test failed: {e}[/red]")
         raise typer.Exit(1)
 
 

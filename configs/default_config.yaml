@@ -33,12 +33,13 @@ targets:
   #   api_key_env: "platform_b_key"
   #   model: "gpt-4o"
 
-# Judge configuration - 使用Gemini 2.5 Pro作为裁判
+# Judge configuration - 使用Gemini作为裁判
 judge:
   name: "Gemini_Judge"
   api_base: "https://generativelanguage.googleapis.com/v1beta"
   api_key_env: "gemini_key"
-  model: "gemini-2.0-flash-exp"    # 或使用 "gemini-1.5-pro" 等其他模型
+  model: "gemini-1.5-pro"    # 推荐使用稳定的1.5-pro版本
+  # 其他可选模型: "gemini-1.5-flash", "gemini-2.0-flash-exp"
 
 # Run configuration
 run_settings:

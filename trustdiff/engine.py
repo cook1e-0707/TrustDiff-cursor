@@ -375,9 +375,14 @@ class Engine:
         return valid_evaluations
     
     def _calc_latency_diff(self, baseline: RawResult, target: RawResult) -> Optional[float]:
-        """Calculate latency difference."""
+        """Calculate latency difference (positive = target slower, negative = target faster)."""
         if baseline.latency_ms is not None and target.latency_ms is not None:
-            return target.latency_ms - baseline.latency_ms
+            diff = target.latency_ms - baseline.latency_ms
+            # Log extreme differences for debugging
+            if abs(diff) > 30000:  # > 30 seconds seems unrealistic
+                console.print(f"[yellow]Unusual latency difference: {target.platform_name} vs {baseline.platform_name}: {diff:.1f}ms[/yellow]")
+                console.print(f"[dim]Target: {target.latency_ms:.1f}ms, Baseline: {baseline.latency_ms:.1f}ms[/dim]")
+            return diff
         return None
     
     def _calc_cost_diff(self, baseline: RawResult, target: RawResult) -> Optional[float]:

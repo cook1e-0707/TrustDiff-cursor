@@ -213,9 +213,29 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             ],
             "generationConfig": {
                 "temperature": 0.1,
-                "maxOutputTokens": 1000,
-                "candidateCount": 1
-            }
+                "maxOutputTokens": 2000,  # Increase token limit for complex evaluations
+                "candidateCount": 1,
+                "stopSequences": [],
+                "responseMimeType": "text/plain"
+            },
+            "safetySettings": [
+                {
+                    "category": "HARM_CATEGORY_HARASSMENT",
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_HATE_SPEECH", 
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                    "threshold": "BLOCK_NONE"
+                },
+                {
+                    "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                    "threshold": "BLOCK_NONE"
+                }
+            ]
         }
         
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -238,25 +258,73 @@ Your entire output must be a single, valid JSON object, with no explanatory text
         try:
             if 'candidates' in gemini_response and gemini_response['candidates']:
                 candidate = gemini_response['candidates'][0]
+                
+                # Handle different Gemini response formats
+                text_content = None
+                
+                # Format 1: Standard format with parts
                 if 'content' in candidate and 'parts' in candidate['content']:
-                    text = candidate['content']['parts'][0]['text']
-                    
+                    if candidate['content']['parts']:
+                        text_content = candidate['content']['parts'][0].get('text', '')
+                
+                # Format 2: Direct text in content
+                elif 'content' in candidate and isinstance(candidate['content'], str):
+                    text_content = candidate['content']
+                
+                # Format 3: Text field directly in candidate
+                elif 'text' in candidate:
+                    text_content = candidate['text']
+                
+                # Format 4: Check if content has text directly
+                elif 'content' in candidate and 'text' in candidate['content']:
+                    text_content = candidate['content']['text']
+                
+                if text_content is not None:
                     # Convert to OpenAI format
                     return {
                         'choices': [
                             {
                                 'message': {
-                                    'content': text
+                                    'content': text_content
+                                }
+                            }
+                        ]
+                    }
+                
+                # If no text found, check for error conditions
+                finish_reason = candidate.get('finishReason', '')
+                if finish_reason == 'MAX_TOKENS':
+                    console.print(f"[yellow]Gemini response truncated due to max tokens[/yellow]")
+                    # Try to extract partial content
+                    return {
+                        'choices': [
+                            {
+                                'message': {
+                                    'content': '[Response truncated due to max tokens limit]'
+                                }
+                            }
+                        ]
+                    }
+                elif finish_reason in ['SAFETY', 'RECITATION']:
+                    console.print(f"[yellow]Gemini response blocked due to: {finish_reason}[/yellow]")
+                    return {
+                        'choices': [
+                            {
+                                'message': {
+                                    'content': f'[Response blocked by Gemini due to {finish_reason} filters]'
                                 }
                             }
                         ]
                     }
             
-            console.print(f"[yellow]Unexpected Gemini response format: {gemini_response}[/yellow]")
+            # Log the actual response structure for debugging
+            console.print(f"[yellow]Unexpected Gemini response format:[/yellow]")
+            console.print(f"[dim]{str(gemini_response)[:500]}...[/dim]")
             return None
             
         except Exception as e:
             console.print(f"[yellow]Failed to convert Gemini response: {e}[/yellow]")
+            console.print(f"[dim]Response: {str(gemini_response)[:200]}...[/dim]")
             return None
     
     def _parse_judge_response(self, response_data: Dict[str, Any]) -> Optional[QualityEvaluation]:
