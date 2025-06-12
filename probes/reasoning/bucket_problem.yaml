@@ -1,0 +1,11 @@
+probe_id: "reasoning_bucket_problem"
+probe_type: "reasoning"
+description: "Tests multi-step logical reasoning with the classic bucket problem"
+
+prompt:
+  - role: "user"
+    content: "I have a 10-liter bucket and a 3-liter bucket. How can I get exactly 4 liters? Explain the steps clearly."
+
+# Optional parameters
+max_tokens: 1000
+temperature: 0.7 
