@@ -1,28 +1,50 @@
 """
-TrustDiff - A Python testing framework for detecting semantic vulnerabilities in LLM API platforms.
+TrustDiff - Enhanced AI Platform Cognitive Assessment with H-CAF Framework.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __author__ = "TrustDiff Team"
-__description__ = "Testing framework for LLM API platform reliability"
+__description__ = "H-CAF Framework for AI Platform Cognitive Assessment"
 
-from .models import Probe, RawResult, EvaluationResult, PlatformConfig, QualityEvaluation, DetailedScores
+# Import core models with updated names
+from .models import (
+    ProbeDefinition, RawResult, EvaluationResult, PlatformConfig, 
+    QualityEvaluation, DetailedScores, CognitiveFingerprint, CapabilityGaps,
+    RunConfig, TrustDiffReport, ExecutionPlan
+)
+
+# Import core components  
 from .engine import Engine
-from .comparator import Comparator
-from .storage import Storage
-from .reporter import Reporter
-from .debug_utils import validate_configuration
+from .comparator import HCAFComparator, Comparator  # Keep backward compatibility
+from .storage import TrustDiffStorage
+
+# Create aliases for consistent naming
+TrustDiffEngine = Engine  # Alias for the main engine class
+Storage = TrustDiffStorage  # Backward compatibility
+Probe = ProbeDefinition  # Backward compatibility
 
 __all__ = [
-    "Probe",
+    # Core models
+    "ProbeDefinition",
     "RawResult", 
     "EvaluationResult",
     "PlatformConfig",
     "QualityEvaluation",
     "DetailedScores",
+    "CognitiveFingerprint",
+    "CapabilityGaps",
+    "RunConfig",
+    "TrustDiffReport",
+    "ExecutionPlan",
+    
+    # Core components
     "Engine",
-    "Comparator",
+    "TrustDiffEngine",
+    "HCAFComparator",
+    "TrustDiffStorage",
+    
+    # Backward compatibility
+    "Comparator", 
     "Storage",
-    "Reporter",
-    "validate_configuration",
+    "Probe",
 ] 

@@ -12,16 +12,16 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="trustdiff",
-    version="0.1.0",
+    version="1.0.0",
     author="TrustDiff Team",
     author_email="your.email@example.com",
-    description="A Python testing framework for detecting semantic vulnerabilities in LLM API platforms",
+    description="H-CAF Framework for AI Platform Cognitive Assessment",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/your-username/trustdiff",
     packages=find_packages(),
     classifiers=[
-        "Development Status :: 3 - Alpha",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
         "Intended Audience :: Science/Research",
         "License :: OSI Approved :: MIT License",
@@ -37,7 +37,7 @@ setup(
     install_requires=requirements,
     entry_points={
         "console_scripts": [
-            "trustdiff=trustdiff.main:app",
+            "trustdiff=trustdiff.main:main",
         ],
     },
     include_package_data=True,
