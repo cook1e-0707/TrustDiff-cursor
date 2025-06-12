@@ -97,11 +97,29 @@ class Engine:
                 if not api_key:
                     console.print(f"[yellow]Warning: No API key found for {platform_config.name}[/yellow]")
                 
-                # Prepare headers
+                # Prepare headers with flexible authentication
                 headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
+                    "Content-Type": "application/json"
                 }
+                
+                # Handle different authentication types
+                if api_key:
+                    auth_type = platform_config.auth_type or "bearer"
+                    api_key_header = platform_config.api_key_header or "Authorization"
+                    api_key_prefix = platform_config.api_key_prefix or "Bearer"
+                    
+                    if auth_type == "bearer":
+                        headers[api_key_header] = f"{api_key_prefix} {api_key}"
+                    elif auth_type == "api_key":
+                        headers[api_key_header] = api_key
+                    elif auth_type == "custom":
+                        # For custom auth, the user should provide headers directly
+                        if platform_config.headers and api_key_header in platform_config.headers:
+                            headers.update(platform_config.headers)
+                        else:
+                            headers[api_key_header] = api_key
+                
+                # Add any additional custom headers
                 if platform_config.headers:
                     headers.update(platform_config.headers)
                 
@@ -120,10 +138,16 @@ class Engine:
                     "temperature": probe.temperature or 0.7
                 }
                 
-                # Make request
+                # Make request - Fix URL concatenation with custom endpoint
+                endpoint_path = platform_config.endpoint_path or "/chat/completions"
+                api_url = platform_config.api_base.rstrip('/') + endpoint_path
+                
+                console.print(f"[dim]Making request to: {api_url}[/dim]")
+                console.print(f"[dim]Headers: {dict((k, v[:20] + '...' if len(str(v)) > 20 else v) for k, v in headers.items())}[/dim]")
+                
                 async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
                     response = await client.post(
-                        f"{platform_config.api_base}/chat/completions",
+                        api_url,
                         headers=headers,
                         json=body
                     )
@@ -131,37 +155,94 @@ class Engine:
                     latency = (datetime.now() - start_time).total_seconds() * 1000
                     
                     if response.status_code == 200:
-                        response_data = response.json()
-                        
-                        # Extract token usage if available
-                        tokens_used = None
-                        if 'usage' in response_data:
-                            tokens_used = response_data['usage'].get('total_tokens')
-                        
-                        return RawResult(
-                            probe_id=probe.probe_id,
-                            platform_name=platform_config.name,
-                            success=True,
-                            response_data=response_data,
-                            latency_ms=latency,
-                            tokens_used=tokens_used
-                        )
+                        try:
+                            response_data = response.json()
+                            
+                            # Check if response contains error (some APIs return 200 but with error content)
+                            if 'error' in response_data:
+                                console.print(f"[red]API returned error in 200 response: {response_data['error']}[/red]")
+                                return RawResult(
+                                    probe_id=probe.probe_id,
+                                    platform_name=platform_config.name,
+                                    success=False,
+                                    error_message=f"API Error: {response_data['error']}",
+                                    latency_ms=latency
+                                )
+                            
+                            # Validate response structure
+                            if 'choices' not in response_data or not response_data['choices']:
+                                console.print(f"[red]Invalid response structure from {platform_config.name}[/red]")
+                                return RawResult(
+                                    probe_id=probe.probe_id,
+                                    platform_name=platform_config.name,
+                                    success=False,
+                                    error_message="Invalid response structure: no choices found",
+                                    latency_ms=latency
+                                )
+                            
+                            # Extract token usage if available
+                            tokens_used = None
+                            if 'usage' in response_data:
+                                tokens_used = response_data['usage'].get('total_tokens')
+                            
+                            console.print(f"[green]✓ {platform_config.name} - {probe.probe_id} ({latency:.1f}ms)[/green]")
+                            
+                            return RawResult(
+                                probe_id=probe.probe_id,
+                                platform_name=platform_config.name,
+                                success=True,
+                                response_data=response_data,
+                                latency_ms=latency,
+                                tokens_used=tokens_used
+                            )
+                        except json.JSONDecodeError:
+                            console.print(f"[red]Failed to parse JSON response from {platform_config.name}[/red]")
+                            return RawResult(
+                                probe_id=probe.probe_id,
+                                platform_name=platform_config.name,
+                                success=False,
+                                error_message=f"Invalid JSON response: {response.text[:200]}",
+                                latency_ms=latency
+                            )
                     else:
+                        error_msg = f"HTTP {response.status_code}: {response.text}"
+                        console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - {error_msg}[/red]")
                         return RawResult(
                             probe_id=probe.probe_id,
                             platform_name=platform_config.name,
                             success=False,
-                            error_message=f"HTTP {response.status_code}: {response.text}",
+                            error_message=error_msg,
                             latency_ms=latency
                         )
                         
-            except Exception as e:
+            except httpx.TimeoutException:
                 latency = (datetime.now() - start_time).total_seconds() * 1000
+                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Timeout after {latency:.1f}ms[/red]")
                 return RawResult(
                     probe_id=probe.probe_id,
                     platform_name=platform_config.name,
                     success=False,
-                    error_message=str(e),
+                    error_message="Request timeout",
+                    latency_ms=latency
+                )
+            except httpx.ConnectError as e:
+                latency = (datetime.now() - start_time).total_seconds() * 1000
+                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Connection failed: {e}[/red]")
+                return RawResult(
+                    probe_id=probe.probe_id,
+                    platform_name=platform_config.name,
+                    success=False,
+                    error_message=f"Connection error: {str(e)}",
+                    latency_ms=latency
+                )
+            except Exception as e:
+                latency = (datetime.now() - start_time).total_seconds() * 1000
+                console.print(f"[red]✗ {platform_config.name} - {probe.probe_id} - Unexpected error: {e}[/red]")
+                return RawResult(
+                    probe_id=probe.probe_id,
+                    platform_name=platform_config.name,
+                    success=False,
+                    error_message=f"Unexpected error: {str(e)}",
                     latency_ms=latency
                 )
     
@@ -219,13 +300,22 @@ class Engine:
                 
                 if baseline_result:
                     for target_result in target_results:
+                        # Only create evaluation if both results are available
+                        # Success/failure will be determined by individual result success flags
+                        evaluation_success = baseline_result.success and target_result.success
+                        
+                        if not evaluation_success:
+                            console.print(f"[yellow]Skipping evaluation for {probe_id} - {target_result.platform_name}: baseline_success={baseline_result.success}, target_success={target_result.success}[/yellow]")
+                        
                         evaluation = EvaluationResult(
                             probe_id=probe_id,
                             target_platform=target_result.platform_name,
                             baseline_platform=baseline_result.platform_name,
-                            latency_diff_ms=self._calc_latency_diff(baseline_result, target_result),
-                            cost_diff=self._calc_cost_diff(baseline_result, target_result),
-                            tokens_diff=self._calc_tokens_diff(baseline_result, target_result)
+                            latency_diff_ms=self._calc_latency_diff(baseline_result, target_result) if evaluation_success else None,
+                            cost_diff=self._calc_cost_diff(baseline_result, target_result) if evaluation_success else None,
+                            tokens_diff=self._calc_tokens_diff(baseline_result, target_result) if evaluation_success else None,
+                            evaluation_success=evaluation_success,
+                            error_message=target_result.error_message if not target_result.success else baseline_result.error_message if not baseline_result.success else None
                         )
                         evaluations.append(evaluation)
             
@@ -245,18 +335,37 @@ class Engine:
             
             if baseline_result:
                 for target_result in target_results:
-                    comparison_tasks.append(
-                        self.comparator.compare(baseline_result, target_result)
-                    )
+                    # Only run quality comparison if both requests succeeded
+                    if baseline_result.success and target_result.success:
+                        comparison_tasks.append(
+                            self.comparator.compare(baseline_result, target_result)
+                        )
+                    else:
+                        # Create a failed evaluation for failed requests
+                        error_msg = target_result.error_message if not target_result.success else baseline_result.error_message
+                        console.print(f"[yellow]Creating failed evaluation for {probe_id} - {target_result.platform_name}: {error_msg}[/yellow]")
+                        
+                        async def create_failed_evaluation():
+                            return EvaluationResult(
+                                probe_id=probe_id,
+                                target_platform=target_result.platform_name,
+                                baseline_platform=baseline_result.platform_name,
+                                evaluation_success=False,
+                                error_message=error_msg
+                            )
+                        
+                        comparison_tasks.append(create_failed_evaluation())
         
-        console.print(f"[blue]Running {len(comparison_tasks)} quality evaluations...[/blue]")
+        console.print(f"[blue]Running {len(comparison_tasks)} evaluations...[/blue]")
         evaluations = await asyncio.gather(*comparison_tasks, return_exceptions=True)
         
-        # Filter out exceptions
-        valid_evaluations = [
-            eval_result for eval_result in evaluations 
-            if isinstance(eval_result, EvaluationResult)
-        ]
+        # Filter out exceptions and convert results
+        valid_evaluations = []
+        for eval_result in evaluations:
+            if isinstance(eval_result, EvaluationResult):
+                valid_evaluations.append(eval_result)
+            elif isinstance(eval_result, Exception):
+                console.print(f"[red]Evaluation failed with exception: {eval_result}[/red]")
         
         # Save evaluations
         if self.storage:

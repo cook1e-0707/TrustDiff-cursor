@@ -15,6 +15,7 @@ from rich import print as rprint
 from .models import RunConfig
 from .engine import Engine
 from .reporter import Reporter
+from .debug_utils import validate_configuration
 
 app = typer.Typer(
     name="trustdiff",
@@ -174,6 +175,24 @@ def report(
             
     except Exception as e:
         console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def debug(
+    config: str = typer.Option("./configs/default_config.yaml", help="Path to configuration file")
+):
+    """Debug and validate TrustDiff configuration."""
+    try:
+        run_config = load_config(config)
+        
+        async def run_debug():
+            await validate_configuration(run_config)
+        
+        asyncio.run(run_debug())
+        
+    except Exception as e:
+        console.print(f"[red]Configuration error: {e}[/red]")
         raise typer.Exit(1)
 
 

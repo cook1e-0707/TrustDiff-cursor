@@ -37,6 +37,12 @@ class PlatformConfig(BaseModel):
     api_key_env: str
     model: Optional[str] = None
     headers: Optional[Dict[str, str]] = None
+    # Advanced options for third-party platforms
+    auth_type: Optional[str] = "bearer"  # bearer, api_key, custom
+    api_key_header: Optional[str] = "Authorization"  # Custom header name for API key
+    api_key_prefix: Optional[str] = "Bearer"  # Prefix for API key (Bearer, sk-, etc.)
+    endpoint_path: Optional[str] = "/chat/completions"  # Custom endpoint path
+    request_format: Optional[str] = "openai"  # openai, custom
 
 
 class RawResult(BaseModel):

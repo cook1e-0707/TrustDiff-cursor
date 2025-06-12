@@ -11,6 +11,7 @@ from .engine import Engine
 from .comparator import Comparator
 from .storage import Storage
 from .reporter import Reporter
+from .debug_utils import validate_configuration
 
 __all__ = [
     "Probe",
@@ -23,4 +24,5 @@ __all__ = [
     "Comparator",
     "Storage",
     "Reporter",
+    "validate_configuration",
 ] 

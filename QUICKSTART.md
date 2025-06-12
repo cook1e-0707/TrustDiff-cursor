@@ -157,19 +157,37 @@ results = asyncio.run(engine.run_test_suite())
 
 ## Troubleshooting
 
+### Quick Debug Commands
+
+```bash
+# 🔍 Validate configuration and test connections
+trustdiff debug --config configs/default_config.yaml
+
+# 🧪 Test with a single probe
+trustdiff run --config configs/default_config.yaml --probe-filter "reasoning_bucket"
+
+# 👀 Preview without executing
+trustdiff run --config configs/default_config.yaml --dry-run
+```
+
 ### Common Issues
 
-1. **API Key Issues**: Make sure environment variables are set correctly
-2. **Network Timeouts**: Increase `timeout_seconds` in configuration
-3. **Rate Limits**: Reduce `concurrency` in configuration
-4. **Missing Dependencies**: Run `pip install -r requirements.txt`
+1. **API调用失败但显示Success**: Use `trustdiff debug` to validate configuration
+2. **URL拼接错误**: Remove trailing slash from `api_base` in config
+3. **第三方平台认证失败**: Check API key format and authentication type
+4. **网络连接问题**: Increase `timeout_seconds` and reduce `concurrency`
 
 ### Debug Mode
 
-Add verbose logging by setting environment variable:
 ```bash
+# Enable detailed debugging
 export TRUSTDIFF_DEBUG=1
+trustdiff run --config configs/default_config.yaml
 ```
+
+### 📚 Complete Troubleshooting Guide
+
+For detailed solutions to all common problems, see: `docs/TROUBLESHOOTING.md`
 
 ## Next Steps
 
