@@ -118,11 +118,15 @@ class TrustDiffEngine:
                 "Authorization": f"Bearer {self.api_keys.get(platform.api_key_env, '')}"
             }
             
+            # Use probe-specific settings if available, otherwise use platform defaults
+            max_tokens = probe.max_tokens if probe.max_tokens else platform.max_tokens
+            temperature = probe.temperature if probe.temperature is not None else platform.temperature
+            
             body = {
                 "model": platform.model,
                 "messages": [{"role": "user", "content": probe.prompt}],
-                "max_tokens": platform.max_tokens,
-                "temperature": platform.temperature,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
                 **(platform.additional_params or {})
             }
 

@@ -197,13 +197,33 @@ class ProbeDefinition:
     Probe definition structure for test cases.
     Defines the test scenarios and expected cognitive focus areas.
     """
-    id: str  # Unique probe identifier
-    prompt: str  # Test prompt/question
+    prompt: str  # Test prompt/question (required)
+    id: Optional[str] = None  # Unique probe identifier
     expected_cognitive_focus: Optional[List[str]] = None  # Expected cognitive vectors tested
     category: Optional[str] = None  # Probe category (reasoning, knowledge, etc.)
     difficulty_level: Optional[str] = None  # Difficulty level (easy, medium, hard)
     description: Optional[str] = None  # Human-readable description
     tags: Optional[List[str]] = None  # Additional tags for categorization
+    
+    # Legacy fields for backward compatibility
+    probe_id: Optional[str] = None  # Legacy field, maps to id
+    probe_type: Optional[str] = None  # Legacy field, maps to category
+    max_tokens: Optional[int] = None  # Max tokens for this specific probe
+    temperature: Optional[float] = None  # Temperature for this specific probe
+    evaluation_notes: Optional[str] = None  # Additional evaluation notes
+    
+    def __post_init__(self):
+        """Handle backward compatibility for field names"""
+        # Ensure we have an id - use probe_id if id is not provided
+        if not self.id and self.probe_id:
+            self.id = self.probe_id
+        elif not self.id:
+            # Generate a default id if neither is provided
+            self.id = f"probe_{hash(self.prompt) % 10000}"
+        
+        # If probe_type is provided but category is not, use probe_type
+        if self.probe_type and not self.category:
+            self.category = self.probe_type
 
 
 @dataclass
