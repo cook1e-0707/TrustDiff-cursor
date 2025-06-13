@@ -211,6 +211,7 @@ class ProbeDefinition:
     max_tokens: Optional[int] = None  # Max tokens for this specific probe
     temperature: Optional[float] = None  # Temperature for this specific probe
     evaluation_notes: Optional[str] = None  # Additional evaluation notes
+    cognitive_focus: Optional[List[str]] = None  # Legacy field, maps to expected_cognitive_focus
     
     def __post_init__(self):
         """Handle backward compatibility for field names"""
@@ -224,6 +225,10 @@ class ProbeDefinition:
         # If probe_type is provided but category is not, use probe_type
         if self.probe_type and not self.category:
             self.category = self.probe_type
+        
+        # Handle cognitive_focus mapping
+        if self.cognitive_focus and not self.expected_cognitive_focus:
+            self.expected_cognitive_focus = self.cognitive_focus
 
 
 @dataclass

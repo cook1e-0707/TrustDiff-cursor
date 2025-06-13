@@ -634,6 +634,14 @@ Your entire output must be a single, valid JSON object, with no explanatory text
             "safety_metacognition": ["safety", "risk", "danger", "limitation", "uncertain", "harmful"]
         }
         
+        # Handle case where prompt_text might be a list or other types
+        if isinstance(prompt_text, list):
+            # If it's a list, join all elements into a single string
+            prompt_text = " ".join(str(item) for item in prompt_text)
+        elif not isinstance(prompt_text, str):
+            # Convert to string if it's not already
+            prompt_text = str(prompt_text)
+        
         prompt_lower = prompt_text.lower()
         probe_lower = probe_id.lower()
         
