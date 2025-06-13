@@ -23,7 +23,7 @@ class TrustDiffStorage:
     """Enhanced storage manager supporting H-CAF cognitive assessment data"""
     
     def __init__(self, output_dir: str = "output"):
-        self.output_dir = output_dir
+        self.output_dir = Path(output_dir)
         self.ensure_output_directory()
         
         self.db_path = self.output_dir / "results.db"
